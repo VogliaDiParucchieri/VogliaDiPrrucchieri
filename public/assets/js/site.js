@@ -10,6 +10,15 @@ const page = document.body.dataset.page;
 const initial = s => esc((s || '?').trim()[0]?.toUpperCase());
 const avatar = s => `<div class="av" ${s.photo ? `style="background-image:url('${esc(s.photo)}')"` : ''}>${s.photo ? '' : initial(s.name)}</div>`;
 
+// dati di contatto: i campi vuoti o d'esempio (solo zeri / @esempio.it) non vengono mostrati
+const hasNum = v => /[1-9]/.test(v || '');
+const hasMail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email || '') && !/@esempio\./i.test(s.email);
+const mapsUrl = s => s.maps || 'https://maps.google.com/?q=' + encodeURIComponent(s.address);
+const phoneLink = s => hasNum(s.phone) ? `<a href="tel:${esc(s.phone.replace(/[^\d+]/g, ''))}">${esc(s.phone)}</a>` : '';
+const mailLink = s => hasMail(s) ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a>` : '';
+const waLink = s => hasNum(s.whatsapp) ? `<a href="https://wa.me/${esc(s.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : '';
+const socialLinks = s => (s.instagram ? `<a href="${esc(s.instagram)}" target="_blank" rel="noopener">Instagram</a>` : '') + (s.facebook ? `<a href="${esc(s.facebook)}" target="_blank" rel="noopener">Facebook</a>` : '');
+
 const PAGES = [['/', 'Home', 'home'], ['/servizi', 'Servizi', 'servizi'], ['/team', 'Team', 'team'], ['/galleria', 'Galleria', 'galleria'], ['/contatti', 'Contatti', 'contatti']];
 
 /* ---------- animazioni: apertura del sito (una volta per sessione) e dissolvenza tra le pagine ---------- */
@@ -48,7 +57,7 @@ function start() {
   $('#ftr').innerHTML = `<footer class="ft"><div class="wrap"><div class="g">
     <div><img class="flogo" src="/assets/img/logo.png" alt="${esc(s.name)}"><p>${esc(s.tagline)}<br>${esc(s.address)}</p></div>
     <div><h4>Pagine</h4>${PAGES.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}<a href="/prenota">Prenota</a></div>
-    <div><h4>Contatti</h4><a href="tel:${esc(s.phone.replace(/\s/g, ''))}">${esc(s.phone)}</a><a href="mailto:${esc(s.email)}">${esc(s.email)}</a><a href="https://wa.me/${esc(s.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a></div></div>
+    <div><h4>Contatti</h4>${phoneLink(s)}${mailLink(s)}${waLink(s)}${socialLinks(s)}</div></div>
     <div class="c"><span>© ${new Date().getFullYear()} ${esc(s.name)}</span><a href="/admin" style="display:inline;margin:0">Area riservata</a></div></div></footer>`;
   ({ home, servizi, team, galleria, prenota, contatti }[page] || (() => { }))();
   const io = new IntersectionObserver(e => e.forEach(x => { if (x.isIntersecting) { x.target.classList.add('in'); io.unobserve(x.target); } }), { threshold: .08 });
@@ -106,8 +115,8 @@ function home() {
   <section class="sec dark"><div class="wrap cta"><h2>Pronto per un nuovo look?</h2><p>Scegli il tuo orario, ci pensiamo noi al resto.</p><a class="bt" href="/prenota">Prenota il tuo appuntamento</a></div></section>
   <section class="sec"><div class="wrap ct"><div><div class="eb">Quando trovarci</div><h2 class="title" style="font-size:34px">Orari</h2>${hoursHtml()}</div>
     <div class="info"><div class="eb">Dove siamo</div><h2 class="title" style="font-size:34px">Contatti</h2>
-    <p><b>Indirizzo</b>${esc(s.address)}</p><p><b>Telefono</b><a href="tel:${esc(s.phone.replace(/\s/g, ''))}">${esc(s.phone)}</a></p>
-    <a class="bt o sm" href="https://maps.google.com/?q=${encodeURIComponent(s.address)}" target="_blank" rel="noopener">Indicazioni</a></div></div></section>`;
+    <p><b>Indirizzo</b>${esc(s.address)}</p>${s.phone && hasNum(s.phone) ? `<p><b>Telefono</b><a href="tel:${esc(s.phone.replace(/[^\d+]/g, ''))}">${esc(s.phone)}</a></p>` : ''}
+    <a class="bt o sm" href="${esc(mapsUrl(s))}" target="_blank" rel="noopener">Indicazioni</a></div></div></section>`;
 }
 
 function servizi() {
@@ -139,10 +148,10 @@ function contatti() {
   const s = D.shop;
   $('#main').innerHTML = `<div class="page-hd"><div class="eb">Dove siamo</div><h1>Contatti</h1></div>
    <section class="sec"><div class="wrap ct"><div class="info">
-    <p><b>Indirizzo</b>${esc(s.address)}</p><p><b>Telefono</b><a href="tel:${esc(s.phone.replace(/\s/g, ''))}">${esc(s.phone)}</a></p>
-    <p><b>Email</b><a href="mailto:${esc(s.email)}">${esc(s.email)}</a></p>
-    <a class="bt" href="https://maps.google.com/?q=${encodeURIComponent(s.address)}" target="_blank" rel="noopener">Indicazioni</a>
-    <a class="bt o" href="https://wa.me/${esc(s.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a></div>
+    <p><b>Indirizzo</b>${esc(s.address)}</p>${s.phone && hasNum(s.phone) ? `<p><b>Telefono</b><a href="tel:${esc(s.phone.replace(/[^\d+]/g, ''))}">${esc(s.phone)}</a></p>` : ''}
+    ${hasMail(s) ? `<p><b>Email</b><a href="mailto:${esc(s.email)}">${esc(s.email)}</a></p>` : ''}
+    <a class="bt" href="${esc(mapsUrl(s))}" target="_blank" rel="noopener">Indicazioni</a>
+    ${hasNum(s.whatsapp) ? `<a class="bt o" href="https://wa.me/${esc(s.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : ''}${s.instagram ? `<a class="bt o" href="${esc(s.instagram)}" target="_blank" rel="noopener">Instagram</a>` : ''}${s.facebook ? `<a class="bt o" href="${esc(s.facebook)}" target="_blank" rel="noopener">Facebook</a>` : ''}</div>
    <div><h2 class="title" style="font-size:30px;margin-bottom:10px">Orari di apertura</h2>${hoursHtml()}</div></div></section>`;
 }
 

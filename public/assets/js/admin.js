@@ -356,6 +356,7 @@ function waClient(id) { const c = cli(id), u = waUrl(c.phone, `Ciao ${c.name.spl
 function sellSub(cid) {
   if (!cid) return toast('Scegli un cliente', true);
   if (activeSub(cid)) return toast('Il cliente ha già un abbonamento attivo', true);
+  SB.q = ''; SB.cid = '';
   act(() => api('POST', '/api/admin/subscriptions', { client_id: cid, staff_id: meId(), start_date: today(), price: A.shop.subPrice, total: A.shop.subUses, uses: [] }));
 }
 function useSub(id) {
@@ -363,10 +364,31 @@ function useSub(id) {
   modal('Segna utilizzo abbonamento', `<p>${esc(cname(s.client_id))} · rimasti ${s.total - s.uses.length} utilizzi</p><label>Data di utilizzo</label><input id="u_d" type="date" value="${today()}">`,
     async () => { const d = $('#u_d').value; if (!d) throw new Error('Scegli la data'); await api('PATCH', '/api/admin/subscriptions/' + id, { uses: [...s.uses, d] }); return true; }, 'Conferma');
 }
+const SB = { q: '', cid: '' }; // ricerca cliente per la vendita di un abbonamento
+function subMatches() {
+  const q = SB.q.trim().toLowerCase(), digits = q.replace(/\D/g, '');
+  if (!q) return [];
+  return A.clients.filter(c => c.name.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (digits.length >= 3 && (c.phone || '').replace(/\D/g, '').includes(digits)))
+    .sort((a, b) => a.name.toLowerCase().indexOf(q) - b.name.toLowerCase().indexOf(q) || a.name.localeCompare(b.name));
+}
+function subRes() {
+  const c = SB.cid && cli(SB.cid);
+  if (c) return `<div class="item" style="padding:8px 0"><span><span class="tag ok">scelto</span> <b>${esc(c.name)}</b> <span class="mu">${esc(c.phone || '')}${activeSub(c.id) ? ' · ha già un abbonamento attivo' : ''}</span></span><button class="btn sec sm" onclick="subClear()">Cambia</button></div>`;
+  if (!SB.q.trim()) return '<div class="mu" style="padding:6px 0">Scrivi nome, telefono o email del cliente.</div>';
+  const m = subMatches();
+  if (!m.length) return '<div class="mu" style="padding:6px 0">Nessun cliente trovato. Aggiungilo prima dalla sezione Clienti.</div>';
+  return m.slice(0, 8).map(c => `<div class="item" style="padding:8px 0;cursor:pointer" onclick="subPick('${c.id}')"><span><b>${esc(c.name)}</b> <span class="mu">${esc(c.phone || '')} ${esc(c.email || '')}</span></span>${activeSub(c.id) ? '<span class="tag gr">già abbonato</span>' : ''}</div>`).join('')
+    + (m.length > 8 ? `<div class="mu" style="padding:6px 0">… altri ${m.length - 8}: scrivi di più per restringere</div>` : '');
+}
+function subUpd() { const r = $('#sres'), b = $('#sbtn'); if (r) r.innerHTML = subRes(); if (b) b.disabled = !SB.cid; }
+function subPick(id) { SB.cid = id; SB.q = cname(id); const i = $('#sq'); if (i) i.value = SB.q; subUpd(); }
+function subClear() { SB.cid = ''; SB.q = ''; const i = $('#sq'); if (i) { i.value = ''; i.focus(); } subUpd(); }
 function pgAbbonamenti() {
   const list = [...A.subs].sort((a, b) => b.start_date.localeCompare(a.start_date));
-  return `<div class="card"><h2>Vendi abbonamento</h2><div class="row"><select id="sc">${selOpts([...A.clients].sort((a, b) => a.name.localeCompare(b.name)), '')}</select>
-   <button class="btn" onclick="sellSub($('#sc').value)">Vendi a ${money(A.shop.subPrice)} · ${A.shop.subUses} utilizzi al mese</button></div></div>
+  return `<div class="card"><h2>Vendi abbonamento</h2><label>Cerca cliente</label>
+   <input id="sq" value="${esc(SB.q)}" placeholder="Nome, telefono o email…" autocomplete="off" oninput="SB.q=this.value;SB.cid='';subUpd()" onkeydown="if(event.key==='Enter'){const m=subMatches();if(!SB.cid&&m.length)subPick(m[0].id)}">
+   <div id="sres" style="margin-bottom:10px">${subRes()}</div>
+   <button class="btn" id="sbtn" ${SB.cid ? '' : 'disabled'} onclick="sellSub(SB.cid)">Vendi a ${money(A.shop.subPrice)} · ${A.shop.subUses} utilizzi al mese</button></div>
    <div class="card"><h2>Abbonamenti</h2>${list.length ? list.map(s => { const act = s.uses.length < s.total; return `<div class="item"><div><b>${esc(cname(s.client_id))}</b> ${act ? '<span class="tag ok">attivo</span>' : '<span class="tag gr">esaurito</span>'}<br>
     <span class="mu">Acquistato ${fdate(s.start_date)} · usati ${s.uses.length}/${s.total}${s.uses.length ? ' · ' + s.uses.map(fdate).join(', ') : ''}</span></div>
     <div class="act">${act ? `<button class="btn sm" onclick="useSub('${s.id}')">Segna utilizzo</button>` : ''}<button class="btn del sm" onclick="delSub('${s.id}')">✕</button></div></div>`; }).join('') : '<div class="mu">Nessun abbonamento venduto</div>'}</div>`;
@@ -620,6 +642,8 @@ function pgImpostazioni() {
    <div class="row"><div><label>Nome</label><input id="s_name" value="${esc(s.name)}"></div><div><label>Sottotitolo</label><input id="s_tagline" value="${esc(s.tagline)}"></div></div>
    <div class="row"><div><label>Città</label><input id="s_city" value="${esc(s.city)}"></div><div><label>Email</label><input id="s_email" value="${esc(s.email)}"></div></div>
    <label>Indirizzo</label><input id="s_address" value="${esc(s.address)}">
+   <div class="row"><div><label>Link Google Maps (per "Indicazioni")</label><input id="s_maps" value="${esc(s.maps || '')}" placeholder="https://maps.app.goo.gl/…"></div></div>
+   <div class="row"><div><label>Instagram (link)</label><input id="s_instagram" value="${esc(s.instagram || '')}" placeholder="https://www.instagram.com/…"></div><div><label>Facebook (link)</label><input id="s_facebook" value="${esc(s.facebook || '')}" placeholder="https://www.facebook.com/…"></div></div>
    <div class="row"><div><label>Telefono</label><input id="s_phone" value="${esc(s.phone)}"></div><div><label>WhatsApp (cifre con prefisso, es. 39333…)</label><input id="s_whatsapp" value="${esc(s.whatsapp)}"></div><div><label>Valuta</label><input id="s_currency" value="${esc(s.currency)}" maxlength="3"></div></div>
    <h3>Orari di apertura</h3>
    ${[1, 2, 3, 4, 5, 6, 0].map(i => { const h = s.hours[i]; return `<div class="item"><span style="width:100px">${DAYS[i]}</span><label style="display:flex;align-items:center"><input type="checkbox" id="h_c${i}" ${h.closed ? 'checked' : ''}>chiuso</label>
@@ -634,7 +658,7 @@ function pgImpostazioni() {
    <button class="btn" onclick="saveShop()">Salva impostazioni</button></div>
   <div class="card"><h2>Cambia password</h2><div class="row"><div><label>Password attuale</label><input id="pw_o" type="password"></div><div><label>Nuova password (min. 8)</label><input id="pw_n" type="password"></div></div>
    <button class="btn" onclick="chPw()">Aggiorna password</button></div>
-  <div class="card"><h2>Stato del sistema</h2><p>Database: <b>${esc(A.status.storage)}</b> ${A.status.supabase ? '<span class="tag ok">Supabase collegato</span>' : '<span class="tag ko">modalità locale: imposta SUPABASE_URL e SUPABASE_SERVICE_KEY nel file .env</span>'}</p>
+  <div class="card"><h2>Stato del sistema</h2>${A.owner || !A.emp ? `<p>Clienti salvati nel database: <b>${A.clients.filter(c => !String(c.id).startsWith('test-')).length}</b> reali${A.clients.some(c => String(c.id).startsWith('test-')) ? ` + ${A.clients.filter(c => String(c.id).startsWith('test-')).length} di prova` : ''} <span class="mu">(letti ora dal database)</span></p>` : ''}<p>Database: <b>${esc(A.status.storage)}</b> ${A.status.supabase ? '<span class="tag ok">Supabase collegato</span>' : '<span class="tag ko">modalità locale: imposta SUPABASE_URL e SUPABASE_SERVICE_KEY nel file .env</span>'}</p>
    <p>Email promemoria: ${A.status.resend ? '<span class="tag ok">Resend attivo</span>' : '<span class="tag ko">non attive (manca RESEND_API_KEY)</span>'}</p></div>
   ${A.owner ? `<div class="card"><h2>Dati di prova</h2><p class="mu">Per provare il gestionale: crea <b>50 clienti</b> registrati con <b>30 appuntamenti già fatti</b> (giorni passati), <b>10 appuntamenti</b> nei prossimi giorni e <b>10 abbonamenti</b>. Sono segnati "DATI DI PROVA" e le loro email sono finte, quindi non partono email vere. Se li crei di nuovo vengono rigenerati con date aggiornate.</p>
    <button class="btn" onclick="testData('create')">Crea dati di prova</button> <button class="btn del" onclick="testData('remove')">Elimina dati di prova</button></div>` : ''}`;
@@ -654,7 +678,7 @@ function addClosure() {
 }
 function saveShop() {
   const b = { hours: [], closures: [] };
-  for (const k of ['name', 'tagline', 'city', 'address', 'phone', 'whatsapp', 'email', 'currency']) b[k] = $('#s_' + k).value;
+  for (const k of ['name', 'tagline', 'city', 'address', 'phone', 'whatsapp', 'email', 'currency', 'maps', 'instagram', 'facebook']) b[k] = $('#s_' + k).value;
   for (let i = 0; i < 7; i++) b.hours.push({ closed: $('#h_c' + i).checked, open: $('#h_o' + i).value, close: $('#h_f' + i).value });
   document.querySelectorAll('#clos .row').forEach(r => { const d = r.querySelector('.cl_d').value; if (d) b.closures.push({ date: d, label: r.querySelector('.cl_l').value }); });
   Object.assign(b, { slot_step: $('#s_slot').value, subPrice: $('#s_sp').value, subUses: $('#s_su').value, reminder_hour: $('#s_rh').value, wa_template: $('#s_wa').value, bd_template: $('#s_bd').value });

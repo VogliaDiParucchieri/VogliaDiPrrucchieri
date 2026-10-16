@@ -37,8 +37,9 @@ const SEED_STAFF = [
 ];
 const day = (o, c) => ({ closed: !o, open: o || '09:00', close: c || '19:30' });
 const SEED_SHOP = {
-  name: 'Voglia di', tagline: 'Parrucchieri · Estetica', currency: '€', city: 'La tua città',
-  address: 'Via Esempio 1, 00000 Città', phone: '+39 000 000 0000', whatsapp: '390000000000', email: 'info@esempio.it',
+  name: 'Voglia di', tagline: 'Parrucchieri · Estetica', currency: '€', city: 'Catania',
+  address: 'Via Messina 441, 95126 Catania (CT)', phone: '+39 095 094 0857', whatsapp: '', email: '',
+  instagram: 'https://www.instagram.com/vogliadiparrucchieri_enrico_/', facebook: '', maps: 'https://maps.app.goo.gl/k7CNoWfwgGCtBmof7',
   hours: [day(), day(), day('09:00', '19:30'), day('09:00', '19:30'), day('09:00', '19:30'), day('09:00', '20:00'), day('09:00', '20:00')],
   closures: [], slot_step: 30, subPrice: 32, subUses: 4, reminder_hour: 10,
   wa_template: 'Ciao {nome}, ti ricordo il tuo appuntamento di domani {data} alle {ora} ({servizio}) da {negozio}. A domani!',
@@ -62,6 +63,15 @@ async function seed(store) {
   }
   const cur = store.get('settings', 'shop');
   if (cur && cur.value.currency === '$') await store.update('settings', 'shop', { value: { ...cur.value, currency: '€' } });
+  // sostituisce i dati d'esempio ancora presenti con quelli reali del salone (non tocca nulla di ciò che è già stato modificato)
+  if (cur) {
+    const v = { ...cur.value }, ph = { city: 'La tua città', address: 'Via Esempio 1, 00000 Città', phone: '+39 000 000 0000', whatsapp: '390000000000', email: 'info@esempio.it' };
+    let changed = false;
+    for (const k of Object.keys(ph)) if (v[k] === ph[k]) { v[k] = SEED_SHOP[k]; changed = true; }
+    for (const k of ['instagram', 'maps']) if (v[k] === undefined) { v[k] = SEED_SHOP[k]; changed = true; }
+    if (v.facebook === undefined) { v.facebook = ''; changed = true; }
+    if (changed) await store.update('settings', 'shop', { value: v });
+  }
   // account: due titolari + pannello owner
   for (const [username, staff_id] of [['Errico10', 'enrico'], ['Grazia86', 'grazia']]) {
     const a = store.get('admins', username);
@@ -377,6 +387,7 @@ async function api(store, req, res, url) {
     const b = await readBody(req), v = { ...shop };
     for (const k of ['name', 'tagline', 'city', 'address', 'phone', 'email', 'currency']) if (typeof b[k] === 'string') v[k] = clean(b[k], 120);
     if (typeof b.whatsapp === 'string') v.whatsapp = b.whatsapp.replace(/\D/g, '').slice(0, 20);
+    for (const k of ['instagram', 'facebook', 'maps']) if (typeof b[k] === 'string') v[k] = /^https:\/\/[^\s<>"']+$/.test(b[k].trim()) ? b[k].trim().slice(0, 300) : '';
     for (const k of ['wa_template', 'bd_template']) if (typeof b[k] === 'string') v[k] = clean(b[k], 500);
     for (const k of ['subPrice', 'subUses', 'reminder_hour', 'slot_step']) if (b[k] !== undefined) v[k] = coerce('n', b[k]);
     if (Array.isArray(b.hours) && b.hours.length === 7)
