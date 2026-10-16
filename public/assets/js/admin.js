@@ -700,7 +700,7 @@ function draw() {
   }
   try { await load(); } catch { return; }
   if (A.owner && PANEL !== 'owner') return void (location.href = '/owner/');
-  if (!A.owner && PANEL === 'owner') return void (location.href = '/admin/');
+  if (!A.owner && PANEL === 'owner') return void (location.href = '/owner/login'); // sei dentro come titolare: chiedi l'accesso owner
   if (A.emp && PAGE !== 'appuntamenti') return void (location.href = '/admin/appuntamenti');
   draw();
   setInterval(async () => { // aggiorna le prenotazioni online in arrivo, senza disturbare chi sta scrivendo
