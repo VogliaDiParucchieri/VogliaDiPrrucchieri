@@ -12,6 +12,30 @@ const avatar = s => `<div class="av" ${s.photo ? `style="background-image:url('$
 
 const PAGES = [['/', 'Home', 'home'], ['/servizi', 'Servizi', 'servizi'], ['/team', 'Team', 'team'], ['/galleria', 'Galleria', 'galleria'], ['/contatti', 'Contatti', 'contatti']];
 
+/* ---------- animazioni: apertura del sito (una volta per sessione) e dissolvenza tra le pagine ---------- */
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+try {
+  if (!reduceMotion && page === 'home' && !sessionStorage.getItem('intro')) {
+    sessionStorage.setItem('intro', '1');
+    const el = document.createElement('div');
+    el.className = 'intro';
+    el.innerHTML = '<img src="/assets/img/logo.png" alt=""><i></i>';
+    document.body.append(el);
+    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 700); }, 1500);
+  }
+} catch { }
+document.addEventListener('click', e => {
+  const a = e.target.closest?.('a[href]');
+  if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || reduceMotion) return;
+  const u = new URL(a.href, location.href);
+  if (u.origin !== location.origin || a.target === '_blank' || a.hasAttribute('download') || /^\/(admin|owner|api)(\/|$)/.test(u.pathname)) return;
+  if (u.pathname === location.pathname && u.search === location.search) return;
+  e.preventDefault();
+  document.body.classList.add('leaving');
+  setTimeout(() => { location.href = u.href; }, 280);
+});
+addEventListener('pageshow', e => { if (e.persisted) document.body.classList.remove('leaving'); });
+
 fetch('/api/public').then(r => r.json()).then(d => { D = d; start(); })
   .catch(() => { $('#main').innerHTML = '<div class="wrap" style="padding:120px 24px;text-align:center"><h2>Servizio momentaneamente non disponibile</h2><p class="mu" style="margin:10px 0 26px">Stiamo avendo un problema tecnico. Riprova tra qualche minuto.</p><button class="bt" onclick="location.reload()">Riprova</button></div>'; });
 
