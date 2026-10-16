@@ -1,0 +1,9 @@
+{
+  "name": "barber-sito",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sito + gestionale per Enrico & Grazia",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}

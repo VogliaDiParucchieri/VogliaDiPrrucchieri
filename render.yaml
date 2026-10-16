@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: voglia-di-parrucchieri
+    runtime: node
+    plan: free
+    buildCommand: echo "nessuna dipendenza da installare"
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
