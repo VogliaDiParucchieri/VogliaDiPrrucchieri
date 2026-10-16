@@ -274,7 +274,7 @@ async function upload(store, dataUrl) {
 
 /* ---------- API ---------- */
 async function api(store, req, res, url) {
-  const ip = req.socket.remoteAddress;
+  const ip = (ON_VERCEL && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress;
   const route = req.method + ' ' + url.pathname;
   const shop = store.get('settings', 'shop').value;
 
@@ -492,27 +492,56 @@ function serve(req, res, url) {
   });
 }
 
-(async () => {
+/* ---------- avvio ---------- */
+const ON_VERCEL = !!env.VERCEL;
+async function openStore() {
   const store = await createStore(env, path.join(__dirname, 'data'));
   await seed(store);
   initSecret(store);
-  http.createServer(async (req, res) => {
+  return store;
+}
+async function handle(store, req, res) {
+  const url = new URL(req.url, 'http://x');
+  try {
+    if (url.pathname.startsWith('/api/')) {
+      if (req.method !== 'GET' && !(req.headers['content-type'] || '').includes('application/json')) throw fail(415, 'Content-Type non valido');
+      return await api(store, req, res, url);
+    }
+    serve(req, res, url);
+  } catch (e) {
+    if (!e.code) console.error(e);
+    json(res, e.code || 500, { error: e.code ? e.message : 'Errore del server' });
+  }
+}
+
+if (ON_VERCEL) {
+  // Serverless: ogni richiesta rilegge i dati da Supabase (le istanze non condividono la memoria).
+  module.exports = async (req, res) => {
     const url = new URL(req.url, 'http://x');
+    if (!url.pathname.startsWith('/api/')) return serve(req, res, url);
     try {
-      if (url.pathname.startsWith('/api/')) {
-        if (req.method !== 'GET' && !(req.headers['content-type'] || '').includes('application/json')) throw fail(415, 'Content-Type non valido');
-        return await api(store, req, res, url);
+      if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) throw fail(500, 'Database non configurato: imposta SUPABASE_URL e SUPABASE_SERVICE_KEY su Vercel');
+      if (url.pathname === '/api/cron/reminders') {
+        if (env.CRON_SECRET && req.headers.authorization !== 'Bearer ' + env.CRON_SECRET) throw fail(401, 'Non autorizzato');
+        const store = await openStore();
+        return json(res, 200, env.RESEND_API_KEY ? await sendReminders(store, env) : { configured: false });
       }
-      serve(req, res, url);
+      const store = await openStore();
+      return await handle(store, req, res);
     } catch (e) {
       if (!e.code) console.error(e);
       json(res, e.code || 500, { error: e.code ? e.message : 'Errore del server' });
     }
-  }).listen(PORT, HOST, () => {
-    const h = HOST === '0.0.0.0' ? 'localhost' : HOST;
-    console.log(`Database:   ${store.adapter}\nSito:       http://${h}:${PORT}\nGestionale: http://${h}:${PORT}/admin\nOwner:      http://${h}:${PORT}/owner`);
-  });
-  startScheduler(store, env);
-  process.on('SIGINT', () => { store.flush(); process.exit(0); });
-  process.on('SIGTERM', () => { store.flush(); process.exit(0); });
-})().catch(e => { console.error('Avvio fallito:', e.message); if (/column|boss_id|role|booking_code/i.test(e.message)) console.error('→ Esegui di nuovo supabase/schema.sql nello SQL Editor di Supabase (aggiunge le nuove colonne).'); process.exit(1); });
+  };
+} else {
+  (async () => {
+    const store = await openStore();
+    http.createServer((req, res) => handle(store, req, res)).listen(PORT, HOST, () => {
+      const h = HOST === '0.0.0.0' ? 'localhost' : HOST;
+      console.log(`Database:   ${store.adapter}\nSito:       http://${h}:${PORT}\nGestionale: http://${h}:${PORT}/admin\nOwner:      http://${h}:${PORT}/owner`);
+    });
+    startScheduler(store, env);
+    process.on('SIGINT', () => { store.flush(); process.exit(0); });
+    process.on('SIGTERM', () => { store.flush(); process.exit(0); });
+  })().catch(e => { console.error('Avvio fallito:', e.message); if (/column|boss_id|role|booking_code/i.test(e.message)) console.error('→ Esegui di nuovo supabase/schema.sql nello SQL Editor di Supabase (aggiunge le nuove colonne).'); process.exit(1); });
+}
