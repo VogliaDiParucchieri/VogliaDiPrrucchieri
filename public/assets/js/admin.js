@@ -6,11 +6,11 @@ const CATS = { uomo: 'Uomo', donna: 'Donna', estetica: 'Estetica' };
 const DAYS = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 const NAV = [
   ['index', '🏠', 'Dashboard'], ['appuntamenti', '📅', 'Appuntamenti'], ['clienti', '👥', 'Clienti'], ['abbonamenti', '🎟️', 'Abbonamenti'],
-  ['guadagni', '💰', 'Guadagni'], ['storico', '📈', 'Storico'], ['messaggi', '💬', 'Promemoria'], null,
+  ['guadagni', '💰', 'Guadagni'], ['storico', '📈', 'Storico'], ['messaggi', '💬', 'Promemoria'], ['email', '✉️', 'Email ai clienti'], null,
   ['servizi', '✂️', 'Servizi e prezzi'], ['team', '🧑‍🤝‍🧑', 'Team e dipendenti'], ['galleria', '🖼️', 'Galleria'], ['impostazioni', '⚙️', 'Impostazioni'],
 ];
 const NAV_EMP = [['appuntamenti', '📅', 'Appuntamenti']]; // i dipendenti vedono solo gli appuntamenti
-const TITLES = { index: 'Dashboard', appuntamenti: 'Appuntamenti', clienti: 'Clienti', abbonamenti: 'Abbonamenti', guadagni: 'Guadagni', storico: 'Storico', messaggi: 'Promemoria', servizi: 'Servizi e prezzi', team: 'Team e dipendenti', galleria: 'Galleria', impostazioni: 'Impostazioni' };
+const TITLES = { index: 'Dashboard', appuntamenti: 'Appuntamenti', clienti: 'Clienti', abbonamenti: 'Abbonamenti', guadagni: 'Guadagni', storico: 'Storico', messaggi: 'Promemoria', email: 'Email ai clienti', servizi: 'Servizi e prezzi', team: 'Team e dipendenti', galleria: 'Galleria', impostazioni: 'Impostazioni' };
 let A = null;
 let scope = (() => { try { return localStorage.getItem('scope_' + PANEL) || (PANEL === 'owner' ? 'all' : 'mine'); } catch { return 'mine'; } })();
 
@@ -452,6 +452,65 @@ async function runReminders() {
   } catch (e) { toast(e.message, true); }
 }
 
+/* ---------- EMAIL AI CLIENTI (Resend) ---------- */
+const E = { subject: '', message: 'Ciao {nome},\n\n\n\nA presto,\n{negozio}', mode: 'all', sel: new Set(), q: '', test: '', busy: false, res: null };
+const emailOk = c => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(c.email || '') && !/@example\.[a-z]+$/i.test(c.email);
+const EMAIL_MODES = { all: 'Tutti i clienti con email', sub: 'Clienti con abbonamento attivo', next: 'Clienti con un appuntamento in arrivo', pick: 'Scelgo io i destinatari' };
+function emailPool() { return A.clients.filter(emailOk).sort((a, b) => a.name.localeCompare(b.name)); }
+function emailTargets() {
+  const pool = emailPool(), t = today();
+  if (E.mode === 'sub') return pool.filter(c => activeSub(c.id));
+  if (E.mode === 'next') { const ids = new Set(A.appts.filter(a => a.status === 'booked' && a.date >= t).map(a => a.client_id)); return pool.filter(c => ids.has(c.id)); }
+  if (E.mode === 'pick') return pool.filter(c => E.sel.has(c.id));
+  return pool;
+}
+function emailList() {
+  const q = E.q.trim().toLowerCase(), l = emailPool().filter(c => !q || (c.name + ' ' + c.email).toLowerCase().includes(q));
+  return l.map(c => `<label class="item" style="cursor:pointer;margin:0;padding:8px 0"><span style="display:flex;gap:10px;align-items:center"><input type="checkbox" style="width:auto;margin:0" ${E.sel.has(c.id) ? 'checked' : ''} onchange="emailPick('${c.id}',this.checked)"><b>${esc(c.name)}</b> <span class="mu">${esc(c.email)}</span></span></label>`).join('') || '<div class="mu">Nessun cliente con email</div>';
+}
+function emailCount() { const n = emailTargets().length; const c = $('#ecount'), b = $('#esend'); if (c) c.textContent = n; if (b) { b.textContent = `Invia a ${n} client${n === 1 ? 'e' : 'i'}`; b.disabled = !n || E.busy; } }
+function emailPick(id, on) { on ? E.sel.add(id) : E.sel.delete(id); emailCount(); }
+function emailPickAll(on) { const q = E.q.trim().toLowerCase(); emailPool().filter(c => !q || (c.name + ' ' + c.email).toLowerCase().includes(q)).forEach(c => on ? E.sel.add(c.id) : E.sel.delete(c.id)); $('#elist').innerHTML = emailList(); emailCount(); }
+let pvTimer;
+function emailPreview() {
+  clearTimeout(pvTimer);
+  pvTimer = setTimeout(async () => { try { const r = await api('POST', '/api/admin/email/preview', { message: E.message }); const f = $('#epv'); if (f) f.srcdoc = r.html; } catch { } }, 350);
+}
+function pgEmail() {
+  const pool = emailPool(), noMail = A.clients.length - pool.length;
+  setTimeout(() => { emailCount(); emailPreview(); }, 0);
+  return `${A.status.resend ? '' : '<div class="card"><h2>Email non attive</h2><p>Per inviare email serve la chiave di Resend: imposta <b>RESEND_API_KEY</b> e <b>RESEND_FROM</b> nelle variabili d\'ambiente di Vercel e rifai il deploy.</p></div>'}
+  <div class="card"><h2>Scrivi l'email</h2>
+   <p class="mu">${A.status.resend ? `<span class="tag ok">Resend attivo</span> Mittente: <b>${esc(A.status.from || 'onboarding@resend.dev (di prova: consegna solo al tuo indirizzo Resend)')}</b>` : ''}</p>
+   <label>Oggetto</label><input id="e_sub" maxlength="150" value="${esc(E.subject)}" placeholder="Es. Novità e promozioni di ${esc(A.shop.name)}" oninput="E.subject=this.value">
+   <label>Messaggio <span class="mu">— usa {nome} per il nome del cliente e {negozio} per il nome del salone</span></label>
+   <textarea id="e_msg" rows="9" maxlength="5000" oninput="E.message=this.value;emailPreview()">${esc(E.message)}</textarea>
+   <h3>Anteprima</h3><iframe id="epv" style="width:100%;height:330px;border:1px solid var(--bd);background:#fff" title="Anteprima email"></iframe></div>
+  <div class="card"><h2>Destinatari <span class="tag"><span id="ecount">0</span> selezionati</span></h2>
+   <select onchange="E.mode=this.value;draw()">${Object.entries(EMAIL_MODES).map(([k, l]) => `<option value="${k}" ${E.mode === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+   <p class="mu">${pool.length} clienti hanno un'email valida${noMail ? ` · ${noMail} non hanno un'email (o è di prova) e vengono saltati` : ''}. Ogni cliente riceve un'email personale: gli altri destinatari non si vedono.</p>
+   ${E.mode === 'pick' ? `<div class="row"><input id="e_q" placeholder="Cerca per nome o email" value="${esc(E.q)}" oninput="E.q=this.value;$('#elist').innerHTML=emailList()"><button class="btn sec sm" style="flex:0;white-space:nowrap" onclick="emailPickAll(true)">Seleziona tutti</button><button class="btn sec sm" style="flex:0;white-space:nowrap" onclick="emailPickAll(false)">Nessuno</button></div>
+    <div id="elist" style="max-height:300px;overflow:auto;border:1px solid var(--bd);padding:4px 12px">${emailList()}</div>` : ''}</div>
+  <div class="card"><h2>Invia</h2>
+   <div class="row"><div><label>Prima prova a te: invia un'email di test a</label><input id="e_test" type="email" placeholder="tuaemail@esempio.it" value="${esc(E.test)}" oninput="E.test=this.value"></div><button class="btn sec" style="flex:0;white-space:nowrap" onclick="emailSend(true)" ${A.status.resend ? '' : 'disabled'}>Invia test</button></div>
+   <button class="btn" id="esend" onclick="emailSend(false)" ${A.status.resend ? '' : 'disabled'}>Invia</button>
+   ${E.res ? `<p style="margin-top:12px">${E.res.errors.length ? '<span class="tag ko">Errore</span>' : '<span class="tag ok">Fatto</span>'} Inviate <b>${E.res.sent}</b> email${E.res.skipped ? ` · ${E.res.skipped} saltate (senza email valida)` : ''}.</p>${E.res.errors.map(e => `<div class="down">${esc(e)}</div>`).join('')}` : ''}</div>`;
+}
+async function emailSend(test) {
+  if (!E.subject.trim() || !E.message.trim()) return toast('Scrivi oggetto e messaggio', true);
+  const body = { subject: E.subject, message: E.message };
+  if (test) { if (!E.test.trim()) return toast('Scrivi il tuo indirizzo email', true); body.testTo = E.test.trim(); }
+  else {
+    const t = emailTargets(); if (!t.length) return toast('Nessun destinatario', true);
+    if (!confirm(`Inviare questa email a ${t.length} client${t.length === 1 ? 'e' : 'i'}?`)) return;
+    body.clientIds = t.map(c => c.id);
+  }
+  E.busy = true; emailCount();
+  try { E.res = await api('POST', '/api/admin/email/send', body); toast(E.res.errors.length ? 'Invio con errori' : 'Email inviate', E.res.errors.length > 0); }
+  catch (e) { toast(e.message, true); }
+  E.busy = false; draw();
+}
+
 /* ---------- SERVIZI E PREZZI ---------- */
 const SV = { staff: null };
 function pgServizi() {
@@ -576,7 +635,17 @@ function pgImpostazioni() {
   <div class="card"><h2>Cambia password</h2><div class="row"><div><label>Password attuale</label><input id="pw_o" type="password"></div><div><label>Nuova password (min. 8)</label><input id="pw_n" type="password"></div></div>
    <button class="btn" onclick="chPw()">Aggiorna password</button></div>
   <div class="card"><h2>Stato del sistema</h2><p>Database: <b>${esc(A.status.storage)}</b> ${A.status.supabase ? '<span class="tag ok">Supabase collegato</span>' : '<span class="tag ko">modalità locale: imposta SUPABASE_URL e SUPABASE_SERVICE_KEY nel file .env</span>'}</p>
-   <p>Email promemoria: ${A.status.resend ? '<span class="tag ok">Resend attivo</span>' : '<span class="tag ko">non attive (manca RESEND_API_KEY)</span>'}</p></div>`;
+   <p>Email promemoria: ${A.status.resend ? '<span class="tag ok">Resend attivo</span>' : '<span class="tag ko">non attive (manca RESEND_API_KEY)</span>'}</p></div>
+  ${A.owner ? `<div class="card"><h2>Dati di prova</h2><p class="mu">Per provare il gestionale: crea <b>50 clienti</b> registrati con <b>30 appuntamenti già fatti</b> (giorni passati), <b>10 appuntamenti</b> nei prossimi giorni e <b>10 abbonamenti</b>. Sono segnati "DATI DI PROVA" e le loro email sono finte, quindi non partono email vere. Se li crei di nuovo vengono rigenerati con date aggiornate.</p>
+   <button class="btn" onclick="testData('create')">Crea dati di prova</button> <button class="btn del" onclick="testData('remove')">Elimina dati di prova</button></div>` : ''}`;
+}
+function testData(action) {
+  if (action === 'remove' && !confirm('Eliminare tutti i clienti, appuntamenti e abbonamenti di prova?')) return;
+  act(async () => {
+    const r = await api('POST', '/api/admin/test-data', { action });
+    if (action === 'remove') toast(`Eliminati ${r.removed.clients} clienti, ${r.removed.appointments} appuntamenti, ${r.removed.subscriptions} abbonamenti`);
+    else toast(`Creati ${r.created.clients} clienti · ${r.created.passati} appuntamenti passati · ${r.created.futuri} in arrivo · ${r.created.abbonamenti} abbonamenti`);
+  });
 }
 function addClosure() {
   const d = document.createElement('div'); d.className = 'row'; d.style.marginBottom = '4px';
@@ -618,7 +687,7 @@ async function doLogin() {
   } catch (e) { $('#lerr').textContent = e.message; }
 }
 
-const PAGES = { index: pgIndex, appuntamenti: pgAppuntamenti, clienti: pgClienti, abbonamenti: pgAbbonamenti, guadagni: pgGuadagni, storico: pgStorico, messaggi: pgMessaggi, servizi: pgServizi, team: pgTeam, galleria: pgGalleria, impostazioni: pgImpostazioni };
+const PAGES = { index: pgIndex, appuntamenti: pgAppuntamenti, clienti: pgClienti, abbonamenti: pgAbbonamenti, guadagni: pgGuadagni, storico: pgStorico, messaggi: pgMessaggi, email: pgEmail, servizi: pgServizi, team: pgTeam, galleria: pgGalleria, impostazioni: pgImpostazioni };
 function draw() {
   const y = scrollY; const f = document.activeElement?.id;
   shell(PAGES[PAGE]());

@@ -5,7 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { createStore } = require('./lib/store');
-const { sendReminders, startScheduler, isoDate } = require('./lib/mail');
+const { sendReminders, sendCampaign, campaignHtml, startScheduler, isoDate } = require('./lib/mail');
+const { createTestData, removeTestData } = require('./lib/seed');
 
 /* ---------- configurazione (.env) ---------- */
 try {
@@ -230,7 +231,7 @@ function bootstrapFor(store, admin, shop, env) {
     ...base, shop, clients: store.rows('clients'),
     subscriptions: store.rows('subscriptions').filter(x => ids.includes(x.staff_id) || (r === 'owner' && !x.staff_id)),
     gallery: [...store.rows('gallery')].sort((a, b) => a.sort - b.sort),
-    status: { supabase: store.isSupabase, storage: store.adapter, resend: !!env.RESEND_API_KEY },
+    status: { supabase: store.isSupabase, storage: store.adapter, resend: !!env.RESEND_API_KEY, from: env.RESEND_FROM || '' },
   };
 }
 // controlla che l'utente possa scrivere su quella riga
@@ -397,6 +398,24 @@ async function api(store, req, res, url) {
   if (route === 'POST /api/admin/reminders/run') {
     const b = await readBody(req);
     return json(res, 200, await sendReminders(store, env, validDate(b.date) ? b.date : undefined));
+  }
+  // email libere ai clienti (schermata "Email")
+  if (route === 'POST /api/admin/email/preview') {
+    const b = await readBody(req);
+    return json(res, 200, { html: campaignHtml(shop, String(b.message || '').slice(0, 5000) || ' ', { name: 'Maria Rossi' }) });
+  }
+  if (route === 'POST /api/admin/email/send') {
+    if (limited(ip, 'mail', 30, 600e3)) throw fail(429, 'Troppi invii, attendi qualche minuto');
+    const b = await readBody(req);
+    const clientIds = Array.isArray(b.clientIds) ? b.clientIds.map(String) : [];
+    return json(res, 200, await sendCampaign(store, env, { subject: b.subject, message: b.message, clientIds, testTo: b.testTo ? String(b.testTo).trim() : '' }));
+  }
+  // dati di prova (solo owner): 50 clienti con appuntamenti passati/futuri e abbonamenti
+  if (route === 'POST /api/admin/test-data') {
+    if (role !== 'owner') throw forbid();
+    const b = await readBody(req);
+    if (b.action === 'remove') return json(res, 200, { removed: await removeTestData(store) });
+    return json(res, 200, { created: await createTestData(store) });
   }
 
   // accesso di un dipendente (creato dal titolare o dall'owner)
