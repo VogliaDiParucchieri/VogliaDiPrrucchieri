@@ -282,13 +282,14 @@ async function api(store, req, res, url) {
   if (route === 'GET /api/public') {
     const { subPrice, subUses, wa_template, bd_template, reminder_hour, slot_step, ...pub } = shop;
     const staff = store.rows('staff').filter(s => s.active).sort((a, b) => a.sort - b.sort);
+    // cache sulla CDN di Vercel: la home non interroga Supabase a ogni visita (le modifiche appaiono entro ~30 s)
     return json(res, 200, {
       shop: pub,
       staff: staff.map(({ id, name, role, bio, photo, is_owner }) => ({ id, name, role, bio, photo, is_owner })),
       services: store.rows('services').filter(s => s.active && staff.some(t => t.id === s.staff_id))
         .map(({ id, staff_id, category, name, price, minutes }) => ({ id, staff_id, category, name, price, minutes })),
       gallery: [...store.rows('gallery')].sort((a, b) => a.sort - b.sort || (a.created_at || '').localeCompare(b.created_at || '')).map(({ id, url, caption }) => ({ id, url, caption })),
-    });
+    }, { 'Cache-Control': 'public, max-age=0, s-maxage=30, stale-while-revalidate=300' });
   }
   if (route === 'GET /api/slots') {
     const sid = url.searchParams.get('staff') || 'any', date = url.searchParams.get('date');
@@ -481,7 +482,10 @@ function serve(req, res, url) {
   const f = path.join(PUBLIC, path.normalize(p));
   if (!f.startsWith(PUBLIC + path.sep)) { res.writeHead(403); return res.end(); }
   fs.readFile(f, (e, buf) => {
-    if (e) { res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end('<meta charset=utf-8><body style="font-family:sans-serif;text-align:center;padding:20vh 0"><h1>404</h1><p>Pagina non trovata.</p><a href="/">Torna alla home</a>'); }
+    if (e) {
+      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return fs.readFile(path.join(PUBLIC, '404.html'), (e2, page) => res.end(e2 ? '<meta charset=utf-8><h1>404</h1><p>Pagina non trovata.</p><a href="/">Torna alla home</a>' : page));
+    }
     const ext = path.extname(f);
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream', 'X-Content-Type-Options': 'nosniff',

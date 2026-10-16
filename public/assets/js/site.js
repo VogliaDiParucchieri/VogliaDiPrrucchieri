@@ -13,7 +13,7 @@ const avatar = s => `<div class="av" ${s.photo ? `style="background-image:url('$
 const PAGES = [['/', 'Home', 'home'], ['/servizi', 'Servizi', 'servizi'], ['/team', 'Team', 'team'], ['/galleria', 'Galleria', 'galleria'], ['/contatti', 'Contatti', 'contatti']];
 
 fetch('/api/public').then(r => r.json()).then(d => { D = d; start(); })
-  .catch(() => { $('#main').innerHTML = '<div class="wrap" style="padding:120px 24px;text-align:center"><h2>Servizio momentaneamente non disponibile</h2><p class="mu">Riprova tra qualche minuto.</p></div>'; });
+  .catch(() => { $('#main').innerHTML = '<div class="wrap" style="padding:120px 24px;text-align:center"><h2>Servizio momentaneamente non disponibile</h2><p class="mu" style="margin:10px 0 26px">Stiamo avendo un problema tecnico. Riprova tra qualche minuto.</p><button class="bt" onclick="location.reload()">Riprova</button></div>'; });
 
 function start() {
   const s = D.shop;
@@ -48,13 +48,16 @@ function lightbox(i) {
   document.addEventListener('keydown', function k(e) { if (e.key === 'Escape') { el.remove(); document.removeEventListener('keydown', k); } });
 }
 function serviceLists(cat) {
-  const cols = D.staff.map(s => {
-    const l = D.services.filter(x => x.staff_id === s.id && x.category === cat);
-    if (!l.length) return '';
-    return `<div class="sv fade"><h3><span>${esc(s.name)}</span><a href="/prenota?staff=${s.id}">Prenota →</a></h3>
-      ${l.map(x => `<div class="r"><span>${esc(x.name)}<small>${x.minutes} minuti</small></span><b>${money(x.price)}</b></div>`).join('')}</div>`;
-  }).join('');
-  return cols || '<div class="empty" style="grid-column:1/-1">Nessun servizio in questa categoria.</div>';
+  // i prezzi sono uguali per tutti gli operatori: un solo elenco, senza duplicati
+  const seen = new Set();
+  const l = D.services.filter(x => {
+    if (x.category !== cat || seen.has(x.name.toLowerCase())) return false;
+    seen.add(x.name.toLowerCase());
+    return true;
+  });
+  if (!l.length) return '<div class="empty" style="grid-column:1/-1">Nessun servizio in questa categoria.</div>';
+  return `<div class="sv fade" style="grid-column:1/-1;max-width:640px;margin:0 auto;width:100%">
+    ${l.map(x => `<div class="r"><span>${esc(x.name)}<small>${x.minutes} minuti</small></span><b>${money(x.price)}</b></div>`).join('')}</div>`;
 }
 
 /* ---------- pagine ---------- */
@@ -89,7 +92,7 @@ function servizi() {
   let cur = cats.includes(want) ? want : cats[0];
   $('#main').innerHTML = `<div class="page-hd"><div class="eb">Listino</div><h1>I nostri servizi</h1></div>
    <section class="sec"><div class="wrap"><div class="tabs" id="tb"></div><div class="cols" id="sl"></div>
-   <p class="ctr mu" style="margin:40px 0 20px">I prezzi possono variare in base all'operatore.</p><p class="ctr"><a class="bt" href="/prenota">Prenota ora</a></p></div></section>`;
+   <p class="ctr" style="margin-top:40px"><a class="bt" href="/prenota">Prenota ora</a></p></div></section>`;
   const draw = () => {
     $('#tb').innerHTML = cats.map(c => `<button class="${c === cur ? 'on' : ''}" data-c="${c}">${CATS[c]}</button>`).join('');
     $('#tb').querySelectorAll('button').forEach(b => b.onclick = () => { cur = b.dataset.c; draw(); });

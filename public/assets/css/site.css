@@ -65,6 +65,7 @@ a{color:inherit}img{max-width:100%;display:block}
 
 /* team */
 .team{display:flex;flex-wrap:wrap;justify-content:center;gap:40px 34px}.team .tm{width:min(100%,240px)}
+@media(min-width:900px){.team{flex-wrap:nowrap;gap:24px}.team .tm{flex:1 1 0;min-width:0;width:auto;max-width:240px}.team .tm .bt{font-size:12px;padding-left:12px;padding-right:12px}}
 .tm{text-align:center}
 .av{width:100%;aspect-ratio:4/5;background:var(--sand) center/cover;display:flex;align-items:center;justify-content:center;font:600 64px 'Playfair Display',serif;color:var(--gold);margin-bottom:18px;border:1px solid var(--bd)}
 .tm h3{font-size:26px}.tm .role{color:var(--gold);font-size:12px;letter-spacing:2px;text-transform:uppercase;margin:6px 0 10px;font-weight:600}
