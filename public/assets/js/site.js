@@ -8,7 +8,7 @@ let D = null; // dati pubblici
 const money = n => (D?.shop.currency || '$') + (Math.round(n * 100) / 100).toLocaleString('it-IT');
 const page = document.body.dataset.page;
 const initial = s => esc((s || '?').trim()[0]?.toUpperCase());
-const avatar = s => `<div class="av" ${s.photo ? `style="background-image:url('${esc(s.photo)}')"` : ''}>${s.photo ? '' : initial(s.name)}</div>`;
+const avatar = s => `<div class="av">${s.photo ? `<img loading="lazy" decoding="async" width="400" height="500" src="${esc(s.photo)}" alt="${esc(s.name)}, ${esc(s.role || 'team')}">` : initial(s.name)}</div>`;
 
 // dati di contatto: i campi vuoti o d'esempio (solo zeri / @esempio.it) non vengono mostrati
 const hasNum = v => /[1-9]/.test(v || '');
@@ -38,7 +38,7 @@ try {
       setTimeout(() => { el.remove(); document.documentElement.classList.remove('introing'); }, 1100);
     };
     el.addEventListener('click', end);
-    setTimeout(end, 2300);
+    setTimeout(end, 2000);
   }
 } catch { }
 document.addEventListener('click', e => {
@@ -58,12 +58,12 @@ fetch('/api/public').then(r => r.json()).then(d => { D = d; start(); })
 
 function start() {
   const s = D.shop;
-  document.title = (page === 'home' ? '' : ({ servizi: 'Servizi', team: 'Il team', galleria: 'Galleria', prenota: 'Prenota', contatti: 'Contatti' }[page] + ' · ')) + s.name;
-  $('#hdr').innerHTML = `<header class="hd"><div class="in"><a class="logo" href="/"><img src="/assets/img/logo.png" alt="${esc(s.name)} ${esc(s.tagline)}"></a>
+  seo(s);
+  $('#hdr').innerHTML = `<header class="hd"><div class="in"><a class="logo" href="/"><img src="/assets/img/logo.png" width="640" height="326" alt="${esc(s.name)} ${esc(s.tagline)} a ${esc(s.city)}"></a>
     <button class="burger" aria-label="Menu" onclick="document.querySelector('.nav').classList.toggle('open')">☰</button>
     <nav class="nav">${PAGES.map(([h, l, k]) => `<a href="${h}" class="${page === k ? 'on' : ''}">${l}</a>`).join('')}<a class="bt sm" style="color:#fff" href="/prenota">Prenota</a></nav></div></header>`;
   $('#ftr').innerHTML = `<footer class="ft"><div class="wrap"><div class="g">
-    <div><img class="flogo" src="/assets/img/logo.png" alt="${esc(s.name)}"><p>${esc(s.tagline)}<br>${esc(s.address)}</p></div>
+    <div><img class="flogo" src="/assets/img/logo.png" width="640" height="326" loading="lazy" alt="${esc(s.name)}"><p>${esc(s.tagline)}<br>${esc(s.address)}</p></div>
     <div><h4>Pagine</h4>${PAGES.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}<a href="/prenota">Prenota</a></div>
     <div><h4>Contatti</h4>${phoneLink(s)}${mailLink(s)}${waLink(s)}${socialLinks(s)}</div></div>
     <div class="c"><span>© ${new Date().getFullYear()} ${esc(s.name)}</span><a href="/admin" style="display:inline;margin:0">Area riservata</a></div></div></footer>`;
@@ -73,15 +73,34 @@ function start() {
   document.querySelectorAll('.fade').forEach(el => io.observe(el));
 }
 
+/* ---------- SEO: dati strutturati schema.org (HairSalon) generati dalle impostazioni del salone ---------- */
+function seo(s) {
+  try {
+    const dn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], o = location.origin;
+    const m = /^(.*?),\s*(\d{5})\s+([^()]+?)(?:\s*\((\w{2})\))?\s*$/.exec(s.address || '');
+    const ld = {
+      '@context': 'https://schema.org', '@type': 'HairSalon', '@id': o + '/#salone', name: s.name + ' ' + s.tagline, url: o + '/',
+      image: o + '/assets/img/team.jpg', logo: o + '/assets/img/logo.png', priceRange: '€€', areaServed: s.city,
+      address: m ? { '@type': 'PostalAddress', streetAddress: m[1], postalCode: m[2], addressLocality: m[3].trim(), addressRegion: m[4] || '', addressCountry: 'IT' } : { '@type': 'PostalAddress', streetAddress: s.address, addressLocality: s.city, addressCountry: 'IT' },
+      openingHoursSpecification: [0, 1, 2, 3, 4, 5, 6].filter(i => s.hours[i] && !s.hours[i].closed).map(i => ({ '@type': 'OpeningHoursSpecification', dayOfWeek: dn[i], opens: s.hours[i].open, closes: s.hours[i].close })),
+      hasMap: mapsUrl(s), sameAs: [s.instagram, s.facebook].filter(Boolean),
+    };
+    if (hasNum(s.phone)) ld.telephone = s.phone;
+    if (hasMail(s)) ld.email = s.email;
+    const el = document.createElement('script'); el.type = 'application/ld+json'; el.textContent = JSON.stringify(ld);
+    document.head.append(el);
+  } catch { }
+}
+
 /* ---------- blocchi riutilizzabili ---------- */
 const hoursHtml = () => {
   const t = new Date().getDay();
   return `<div class="hrs">${[1, 2, 3, 4, 5, 6, 0].map(i => { const h = D.shop.hours[i]; return `<div class="r ${i === t ? 'today' : ''}"><span>${DAYS[i]}</span><span class="${h.closed ? 'cl' : ''}">${h.closed ? 'Chiuso' : h.open + ' – ' + h.close}</span></div>`; }).join('')}</div>`;
 };
-const teamHtml = () => D.staff.length ? `<div class="team">${D.staff.map(s => `<div class="tm fade">${avatar(s)}<h3>${esc(s.name)}</h3><div class="role">${esc(s.role)}</div>${s.bio ? `<p>${esc(s.bio)}</p>` : ''}<a class="bt o sm" href="/prenota?staff=${s.id}">Prenota con ${esc(s.name)}</a></div>`).join('')}</div>` : '';
+const teamHtml = () => D.staff.length ? `<div class="team" style="--cd:${D.staff.length <= 4 ? D.staff.length : Math.ceil(D.staff.length / 2)}">${D.staff.map(s => `<div class="tm fade">${avatar(s)}<h3>${esc(s.name)}</h3><div class="role">${esc(s.role)}</div>${s.bio ? `<p>${esc(s.bio)}</p>` : ''}<a class="bt o sm" href="/prenota?staff=${s.id}">Prenota con ${esc(s.name.split(' ')[0])}</a></div>`).join('')}</div>` : '';
 function galleryHtml(list) {
   if (!list.length) return '<div class="empty">La galleria sarà presto aggiornata con i nostri lavori.</div>';
-  return `<div class="gal">${list.map((g, i) => `<div class="ph fade" onclick="lightbox(${i})"><img loading="lazy" src="${esc(g.url)}" alt="${esc(g.caption || 'Lavoro del salone')}">${g.caption ? `<span>${esc(g.caption)}</span>` : ''}</div>`).join('')}</div>`;
+  return `<div class="gal">${list.map((g, i) => `<div class="ph fade" onclick="lightbox(${i})"><img loading="lazy" decoding="async" src="${esc(g.url)}" alt="${esc(g.caption || 'Lavoro realizzato nel salone ' + D.shop.name + ' a ' + D.shop.city)}">${g.caption ? `<span>${esc(g.caption)}</span>` : ''}</div>`).join('')}</div>`;
 }
 function lightbox(i) {
   const g = D.gallery[i], el = document.createElement('div');
@@ -110,7 +129,7 @@ function home() {
     <div class="eb">${esc(s.city)}</div>
     <h1>Voglia di<br><em>sentirti</em> al meglio.</h1>
     <p>Parrucchieri per donna e uomo, estetica e nail art in un unico posto. Scegli il servizio, il giorno e l'orario: prenoti in pochi secondi.</p>
-    <a class="bt" href="/prenota">Prenota ora</a> <a class="bt o" href="/servizi">Scopri i servizi</a></div><div class="hero-ph"><div class="frame"><img src="/assets/img/team.jpg" alt="Enrico e Grazia, il team di ${esc(s.name)}" fetchpriority="high"></div><span class="badge">Enrico &amp; Grazia</span></div></div></section>
+    <a class="bt" href="/prenota">Prenota ora</a> <a class="bt o" href="/servizi">Scopri i servizi</a></div><div class="hero-ph"><div class="frame"><img src="/assets/img/team.jpg" width="960" height="868" alt="Enrico e Grazia, il team di ${esc(s.name)}" fetchpriority="high"></div><span class="badge">Enrico &amp; Grazia</span></div></div></section>
   <div class="perks"><div><b>Prenotazione online</b><span>Orari sempre aggiornati, 24 ore su 24</span></div>
     <div><b>Professioniste e professionisti</b><span>Hair stylist ed estetiste qualificate</span></div><div><b>Capelli · Unghie · Estetica</b><span>Tutto il benessere in un unico posto</span></div></div>
   <section class="sec"><div class="wrap ctr"><div class="eb">Listino</div><h2 class="title">I nostri servizi</h2>

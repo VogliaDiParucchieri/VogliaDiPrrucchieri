@@ -4,6 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { createStore } = require('./lib/store');
 const { sendReminders, sendCampaign, campaignHtml, startScheduler, isoDate } = require('./lib/mail');
 const { createTestData, removeTestData } = require('./lib/seed');
@@ -506,7 +507,9 @@ async function api(store, req, res, url) {
 }
 
 /* ---------- file statici ---------- */
-const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml; charset=utf-8', '.json': 'application/json; charset=utf-8' };
+const GZ = new Map(); // risposte già compresse (per ETag)
+const COMPRESSIBLE =/^(text\/|application\/(xml|json|javascript)|image\/svg)/;
 function serve(req, res, url) {
   let p = decodeURIComponent(url.pathname);
   if (p === '/admin' || p === '/owner') p += '/';
@@ -519,13 +522,22 @@ function serve(req, res, url) {
       res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return fs.readFile(path.join(PUBLIC, '404.html'), (e2, page) => res.end(e2 ? '<meta charset=utf-8><h1>404</h1><p>Pagina non trovata.</p><a href="/">Torna alla home</a>' : page));
     }
-    const ext = path.extname(f);
-    res.writeHead(200, {
-      'Content-Type': MIME[ext] || 'application/octet-stream', 'X-Content-Type-Options': 'nosniff',
-      'Cache-Control': p.startsWith('/uploads/') ? 'public, max-age=86400' : 'no-cache',
+    const ext = path.extname(f), type = MIME[ext] || 'application/octet-stream';
+    const cache = p.startsWith('/uploads/') ? 'public, max-age=86400' : p.startsWith('/assets/img/') ? 'public, max-age=86400, stale-while-revalidate=604800' : 'no-cache';
+    const etag = '"' + crypto.createHash('md5').update(buf).digest('hex') + '"';
+    const hdr = {
+      'Content-Type': type, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': cache, ETag: etag, Vary: 'Accept-Encoding',
       ...(p.startsWith('/admin') || p.startsWith('/owner') ? { 'X-Robots-Tag': 'noindex' } : {}),
-    });
-    res.end(buf);
+    };
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, hdr); return res.end(); }
+    let body = buf;
+    if (COMPRESSIBLE.test(type) && buf.length > 1024 && /gzip/.test(req.headers['accept-encoding'] || '')) {
+      if (!GZ.has(etag)) { if (GZ.size > 200) GZ.clear(); GZ.set(etag, zlib.gzipSync(buf, { level: 9 })); }
+      body = GZ.get(etag); hdr['Content-Encoding'] = 'gzip';
+    }
+    hdr['Content-Length'] = body.length;
+    res.writeHead(200, hdr);
+    res.end(body);
   });
 }
 
