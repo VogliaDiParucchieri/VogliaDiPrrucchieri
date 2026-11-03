@@ -141,3 +141,6 @@ table{font-size:14px}th{border-bottom:1px solid var(--bd)}
 .photo,.drop,.gal .g{border-radius:10px}
 /* schermi grandi: sfrutta lo spazio */
 @media(min-width:1200px){.shell{grid-template-columns:260px 1fr}.grid{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}.ag-w{max-height:78vh}}
+
+/* QR code */
+.qrbox{width:min(100%,320px);margin:6px auto;padding:14px;background:#fff;border:1px solid var(--bd);border-radius:14px;box-shadow:var(--sh)}.qrbox svg{display:block;width:100%;height:auto}

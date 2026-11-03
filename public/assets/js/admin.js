@@ -7,10 +7,10 @@ const DAYS = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Vene
 const NAV = [
   ['index', '🏠', 'Dashboard'], ['appuntamenti', '📅', 'Appuntamenti'], ['clienti', '👥', 'Clienti'], ['abbonamenti', '🎟️', 'Abbonamenti'],
   ['guadagni', '💰', 'Guadagni'], ['storico', '📈', 'Storico'], ['messaggi', '💬', 'Promemoria'], ['email', '✉️', 'Email ai clienti'], null,
-  ['servizi', '✂️', 'Servizi e prezzi'], ['team', '🧑‍🤝‍🧑', 'Team e dipendenti'], ['galleria', '🖼️', 'Galleria'], ['impostazioni', '⚙️', 'Impostazioni'],
+  ['servizi', '✂️', 'Servizi e prezzi'], ['team', '🧑‍🤝‍🧑', 'Team e dipendenti'], ['galleria', '🖼️', 'Galleria'], ['qr', '📱', 'App e QR code'], ['impostazioni', '⚙️', 'Impostazioni'],
 ];
 const NAV_EMP = [['appuntamenti', '📅', 'Appuntamenti']]; // i dipendenti vedono solo gli appuntamenti
-const TITLES = { index: 'Dashboard', appuntamenti: 'Appuntamenti', clienti: 'Clienti', abbonamenti: 'Abbonamenti', guadagni: 'Guadagni', storico: 'Storico', messaggi: 'Promemoria', email: 'Email ai clienti', servizi: 'Servizi e prezzi', team: 'Team e dipendenti', galleria: 'Galleria', impostazioni: 'Impostazioni' };
+const TITLES = { index: 'Dashboard', appuntamenti: 'Appuntamenti', clienti: 'Clienti', abbonamenti: 'Abbonamenti', guadagni: 'Guadagni', storico: 'Storico', messaggi: 'Promemoria', email: 'Email ai clienti', servizi: 'Servizi e prezzi', team: 'Team e dipendenti', galleria: 'Galleria', qr: 'App e QR code', impostazioni: 'Impostazioni' };
 let A = null;
 let scope = (() => { try { return localStorage.getItem('scope_' + PANEL) || (PANEL === 'owner' ? 'all' : 'mine'); } catch { return 'mine'; } })();
 
@@ -585,6 +585,43 @@ function colorModal(id) {
   setTimeout(() => $('#f_col')?.focus(), 50);
 }
 
+/* ---------- APP E QR CODE: il cliente inquadra il QR e aggiunge il sito alla schermata Home del telefono ---------- */
+const QR = { url: '' };
+const qrBase = () => /^(localhost|127\.|192\.168\.|10\.|0\.0\.0\.0)/.test(location.hostname) ? 'https://www.vogliadiparrucchieri.shop' : location.origin;
+function qrObj() { const q = qrcode(0, 'Q'); q.addData(QR.url); q.make(); return q; }
+function qrSvg() { try { return qrObj().createSvgTag({ cellSize: 8, margin: 2, scalable: true }); } catch { return '<div class="mu">Indirizzo troppo lungo per il QR code</div>'; } }
+function qrPng() { // PNG ad alta risoluzione (stampa o condivisione)
+  const q = qrObj(), n = q.getModuleCount(), cell = Math.floor(1200 / (n + 8)), size = cell * (n + 8), c = document.createElement('canvas');
+  c.width = c.height = size; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, size, size); x.fillStyle = '#000';
+  for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) x.fillRect((k + 4) * cell, (r + 4) * cell, cell, cell);
+  return c.toDataURL('image/png');
+}
+function qrDownload() { const a = document.createElement('a'); a.href = qrPng(); a.download = 'qr-app-voglia-di.png'; a.click(); }
+function qrPrint() {
+  const w = window.open('', '_blank'); if (!w) return toast('Consenti i popup per stampare', true);
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>QR code · ${esc(A.shop.name)}</title><style>body{font-family:Georgia,serif;text-align:center;margin:0;padding:50px 30px}h1{font-size:44px;margin:0 0 6px}p{font-size:22px;margin:0 0 26px;color:#444}img{width:430px;max-width:80%}small{display:block;margin-top:20px;font:16px Arial;color:#666}</style>
+   <h1>${esc(A.shop.name)}</h1><p>Inquadra il QR con la fotocamera<br>e aggiungi l'app sul tuo telefono</p><img src="${qrPng()}" alt="QR code"><small>${esc(QR.url)}</small><script>onload=()=>setTimeout(()=>print(),300)<\/script>`);
+  w.document.close();
+}
+function pgQr() {
+  if (!QR.url) QR.url = qrBase() + '/app';
+  const local = qrBase() !== location.origin;
+  return `<div class="grid2">
+   <div class="card" style="text-align:center"><h2>QR code dell'app</h2>
+    <div class="qrbox">${qrSvg()}</div><div class="mu" style="margin:10px 0 14px;word-break:break-all">${esc(QR.url)}</div>
+    <button class="btn" onclick="qrDownload()">⬇ Scarica PNG</button><button class="btn sec" onclick="qrPrint()">🖨 Stampa cartello</button></div>
+   <div>
+    <div class="card"><h2>Come funziona</h2>
+     <div class="item" style="display:block"><b>1.</b> Il cliente inquadra il QR con la fotocamera del telefono.</div>
+     <div class="item" style="display:block"><b>2.</b> Si apre una pagina dedicata: su <b>Android</b> basta un tocco su «Installa l'app»; su <b>iPhone</b> vengono mostrati i 3 passaggi per «Aggiungi alla schermata Home».</div>
+     <div class="item" style="display:block"><b>3.</b> Sul telefono compare l'icona <b>Voglia di</b>, che apre il sito a schermo intero come una vera app, con la prenotazione a portata di dito.</div></div>
+    <div class="card"><h2>Indirizzo del QR code</h2>
+     ${local ? '<div class="mu" style="margin-bottom:8px">Stai usando il pannello in locale: ho preimpostato l\'indirizzo online del sito. Cambialo se è diverso.</div>' : ''}
+     <input id="qru" value="${esc(QR.url)}" onchange="QR.url=this.value.trim()||qrBase()+'/app';draw()"><div class="mu">Di solito è <b>indirizzo-del-sito/app</b>. Dopo la modifica il QR si aggiorna.</div>
+     <div style="margin-top:10px"><a class="btn sec sm" href="${esc(QR.url)}" target="_blank" rel="noopener">Apri la pagina</a></div></div>
+   </div></div>`;
+}
+
 /* ---------- PROMEMORIA (email Resend + WhatsApp) ---------- */
 const M = { date: (() => addD(today(), 1))() };
 function pgMessaggi() {
@@ -849,7 +886,7 @@ async function doLogin() {
   } catch (e) { $('#lerr').textContent = e.message; }
 }
 
-const PAGES = { index: pgIndex, appuntamenti: pgAppuntamenti, clienti: pgClienti, abbonamenti: pgAbbonamenti, guadagni: pgGuadagni, storico: pgStorico, messaggi: pgMessaggi, email: pgEmail, servizi: pgServizi, team: pgTeam, galleria: pgGalleria, impostazioni: pgImpostazioni };
+const PAGES = { index: pgIndex, appuntamenti: pgAppuntamenti, clienti: pgClienti, abbonamenti: pgAbbonamenti, guadagni: pgGuadagni, storico: pgStorico, messaggi: pgMessaggi, email: pgEmail, servizi: pgServizi, team: pgTeam, galleria: pgGalleria, qr: pgQr, impostazioni: pgImpostazioni };
 function draw() {
   const y = scrollY; const f = document.activeElement?.id;
   shell(PAGES[PAGE]());

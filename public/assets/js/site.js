@@ -53,6 +53,7 @@ document.addEventListener('click', e => {
 });
 addEventListener('pageshow', e => { if (e.persisted) document.body.classList.remove('leaving'); });
 
+if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => { }));
 fetch('/api/public').then(r => r.json()).then(d => { D = d; start(); })
   .catch(() => { $('#main').innerHTML = '<div class="wrap" style="padding:120px 24px;text-align:center"><h2>Servizio momentaneamente non disponibile</h2><p class="mu" style="margin:10px 0 26px">Stiamo avendo un problema tecnico. Riprova tra qualche minuto.</p><button class="bt" onclick="location.reload()">Riprova</button></div>'; });
 

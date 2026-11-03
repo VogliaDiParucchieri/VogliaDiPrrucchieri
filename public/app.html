@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Installa l'app | Voglia di</title>
+<link rel="icon" type="image/png" href="/assets/img/favicon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Voglia di">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d0d0d">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{font:16px/1.55 Inter,system-ui,sans-serif;color:#f1ece4;background:radial-gradient(ellipse at 50% -10%,#3a1428 0%,#0d0d0d 60%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 18px calc(24px + env(safe-area-inset-bottom));-webkit-font-smoothing:antialiased}
+.box{width:100%;max-width:430px;text-align:center}
+.box img.lg{width:min(78%,280px);height:auto;margin:0 auto 26px;display:block}
+h1{font:italic 500 32px/1.15 'Playfair Display',Georgia,serif;margin:0 0 10px}
+.sub{color:#bdb6aa;margin:0 0 26px}
+.btn{display:block;width:100%;border:0;border-radius:999px;padding:18px 24px;background:linear-gradient(135deg,#C9366F,#8a2150);color:#fff;font:700 14px Inter;letter-spacing:2px;text-transform:uppercase;cursor:pointer;text-decoration:none;box-shadow:0 14px 30px -10px rgba(201,54,111,.75)}
+.btn:active{transform:scale(.98)}
+.btn.o{background:transparent;border:1px solid #4a4a4a;box-shadow:none;color:#e8e2d8;margin-top:12px;font-weight:600}
+.card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:18px 18px 8px;text-align:left;margin-bottom:18px}
+.card h2{font:600 11px Inter;letter-spacing:2.5px;text-transform:uppercase;color:#e86f9f;margin:0 0 12px}
+.st{display:flex;gap:14px;align-items:flex-start;padding:0 0 14px}
+.st b{flex:0 0 30px;height:30px;border-radius:50%;background:#C9366F;color:#fff;display:flex;align-items:center;justify-content:center;font:700 14px Inter}
+.st span{padding-top:3px}
+.ic{display:inline-block;vertical-align:-4px;width:20px;height:20px;border:1.5px solid #e8e2d8;border-radius:5px;padding:2px;margin:0 2px}
+.note{font-size:13px;color:#8e877b;margin-top:16px}
+.ok{color:#5be3a0}
+.hide{display:none!important}
+.arrow{font-size:34px;animation:bob 1.2s ease-in-out infinite;display:block;margin-top:4px;color:#e86f9f}
+@keyframes bob{50%{transform:translateY(8px)}}
+</style>
+</head>
+<body>
+<main class="box">
+  <img class="lg" src="/assets/img/logo.png" width="640" height="326" alt="Voglia di Parrucchieri">
+  <h1>Porta Voglia di sul tuo telefono</h1>
+  <p class="sub">Prenota in un tocco, direttamente dall'icona sulla schermata Home. Nessun download dallo store.</p>
+
+  <!-- Android / Chrome: installazione con un solo tocco -->
+  <div id="v-install" class="hide"><button class="btn" id="go">Installa l'app</button><p class="note">Ti verrà chiesta una conferma: tocca <b>Installa</b>.</p></div>
+
+  <!-- iPhone / iPad (Safari) -->
+  <div id="v-ios" class="hide">
+    <div class="card"><h2>Su iPhone, 3 passaggi</h2>
+      <div class="st"><b>1</b><span>Tocca il pulsante <b style="all:unset;font-weight:600">Condividi</b>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#e8e2d8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg> in basso al centro</span></div>
+      <div class="st"><b>2</b><span>Scorri e scegli <b style="all:unset;font-weight:600">«Aggiungi alla schermata Home»</b></span></div>
+      <div class="st"><b>3</b><span>Tocca <b style="all:unset;font-weight:600">Aggiungi</b> in alto a destra. Fatto!</span></div></div>
+    <span class="arrow" aria-hidden="true">⬇</span>
+  </div>
+
+  <!-- Chrome/Firefox su iPhone, o app che aprono i link al loro interno (Instagram, WhatsApp...) -->
+  <div id="v-open" class="hide"><div class="card"><h2>Apri nel browser</h2><div class="st"><span id="open-txt">Per aggiungere l'app, apri questa pagina con <b>Safari</b> (iPhone) o <b>Chrome</b> (Android): tocca i tre puntini o l'icona di condivisione e scegli «Apri nel browser».</span></div></div></div>
+
+  <!-- Android senza pulsante automatico -->
+  <div id="v-android" class="hide"><div class="card"><h2>Su Android</h2>
+    <div class="st"><b>1</b><span>Tocca i <b style="all:unset;font-weight:600">tre puntini ⋮</b> in alto a destra</span></div>
+    <div class="st"><b>2</b><span>Scegli <b style="all:unset;font-weight:600">«Installa app»</b> o <b style="all:unset;font-weight:600">«Aggiungi a schermata Home»</b></span></div></div></div>
+
+  <!-- Computer -->
+  <div id="v-desk" class="hide"><div class="card"><h2>Dal computer</h2><div class="st"><span>Questa pagina è pensata per il telefono: inquadra il QR code con la fotocamera per installare l'app.</span></div></div></div>
+
+  <div id="v-done" class="hide"><div class="card"><h2 class="ok">App installata</h2><div class="st"><span>Trovi l'icona <b>Voglia di</b> sulla schermata Home.</span></div></div></div>
+
+  <a class="btn o" href="/prenota">Prenota subito</a>
+  <a class="btn o" href="/" style="border-color:transparent;color:#8e877b">Continua sul sito</a>
+</main>
+<script>
+(function () {
+  var ua = navigator.userAgent || '', $ = function (i) { return document.getElementById(i); };
+  var standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (standalone) { location.replace('/'); return; }
+  var ios = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  var android = /Android/i.test(ua), mobile = ios || android || /Mobile/i.test(ua);
+  var inApp = /FBAN|FBAV|Instagram|Line\/|MicroMessenger|Snapchat|TikTok|; wv\)|GSA\//i.test(ua);
+  var safari = ios && /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|GSA/i.test(ua);
+  var evt = null, shown = '';
+  function show(id) { ['v-install', 'v-ios', 'v-open', 'v-android', 'v-desk', 'v-done'].forEach(function (x) { $(x).classList.toggle('hide', x !== id); }); shown = id; }
+  if (!mobile) show('v-desk');
+  else if (inApp) show('v-open');
+  else if (ios) show(safari ? 'v-ios' : 'v-open');
+  else show('v-android'); // sostituito da v-install appena Chrome è pronto
+  addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); evt = e; if (mobile && !inApp) show('v-install'); });
+  $('go').addEventListener('click', function () {
+    if (!evt) return;
+    evt.prompt();
+    evt.userChoice.then(function (c) { evt = null; if (c.outcome === 'accepted') show('v-done'); });
+  });
+  addEventListener('appinstalled', function () { show('v-done'); });
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () { });
+})();
+</script>
+</body>
+</html>
