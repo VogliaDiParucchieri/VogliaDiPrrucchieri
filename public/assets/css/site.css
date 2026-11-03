@@ -252,3 +252,48 @@ html.introing{overflow:hidden}
 .code b{color:var(--gold);font-weight:600}
 @keyframes pop{from{transform:scale(.3);opacity:0}to{transform:none;opacity:1}}
 .lnk{color:var(--gold)}
+
+/* ---------- ottimizzazione smartphone ---------- */
+html,body{overflow-x:clip}
+.mcta{display:none}
+@media(max-width:880px){
+ .hd .in{padding:6px 16px}
+ .burger{border-radius:10px;border-color:#3a3a3a;background:#1a1a1a}
+ .nav a{font-size:14px;letter-spacing:2px}
+ .hero{min-height:0}.hero .wrap{padding-top:36px;padding-bottom:44px;gap:34px}
+}
+@media(max-width:640px){
+ body{font-size:15.5px;padding-bottom:74px}
+ .wrap{padding:0 18px}
+ .sec{padding:54px 0}
+ .title{font-size:30px}.lead{font-size:15.5px;margin-bottom:30px}
+ .page-hd{padding:44px 0 28px}
+ .hero h1{font-size:44px;margin:12px 0 16px}.hero p{font-size:16px;margin-bottom:24px}
+ .hero .bt{display:block;width:100%;margin:0 0 10px}
+ .hero-ph{width:100%}.hero-ph .badge{font-size:16px;padding:8px 16px;left:10px;bottom:14px}
+ .bt{padding:16px 24px}.bt.sm{padding:12px 18px}
+ .perks div{padding:22px 18px;border-right:0;border-bottom:1px solid var(--bd)}.perks div:last-child{border-bottom:0}
+ .cols{gap:30px}
+ .sv .r{padding:13px 0}
+ .team{gap:34px}.team .tm{width:100%;max-width:340px}
+ .gal{columns:2 150px;column-gap:8px}.gal .ph{margin-bottom:8px}
+ .ct{gap:34px}.hrs .r{padding:11px 0;font-size:15px}
+ .ft{padding:42px 0 100px}.ft .g{gap:26px}.ft .flogo{height:90px}
+ .ft a{padding:5px 0}
+ .cta h2{font-size:30px}
+ /* prenotazione */
+ .bh h2{font-size:25px}.bx{padding:18px;border-radius:14px}
+ .cards{gap:12px}.c3,.c4{grid-template-columns:1fr}.cd{padding:18px}
+ .c4{grid-template-columns:1fr 1fr}.c4 .cd{padding:14px}.pf{width:64px;height:64px}
+ .dys button{flex:0 0 66px;padding:10px 4px}.dys button b{font-size:22px}
+ .slots2{grid-template-columns:repeat(3,1fr);gap:8px}.slots2 button{padding:14px 2px;font-size:14px}
+ .bxh{flex-direction:column}.lg{align-self:flex-start}
+ .kv{font-size:14px}.two{gap:16px}
+ .bk2 input,.bk2 textarea{font-size:16px}
+ .code b{font-size:28px;letter-spacing:4px}
+ .okbox2 h2{font-size:30px}
+ /* barra "Prenota" sempre a portata di pollice */
+ .mcta{display:flex;position:fixed;left:12px;right:12px;bottom:12px;z-index:45;align-items:center;justify-content:center;height:54px;border-radius:999px;background:linear-gradient(135deg,#C9366F,#8a2150);color:#fff;text-decoration:none;font:700 13px Inter;letter-spacing:2px;text-transform:uppercase;box-shadow:0 12px 28px -8px rgba(201,54,111,.7)}
+ body.leaving .mcta{opacity:0}
+}
+@media(max-width:380px){.c4{grid-template-columns:1fr}.hero h1{font-size:38px}}

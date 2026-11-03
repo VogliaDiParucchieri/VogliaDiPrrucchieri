@@ -147,7 +147,7 @@ const FIELDS = {
   clients: { name: 's:80', phone: 's:30', email: 's:120', birthday: 'd?', notes: 's:2000' },
   appointments: {
     client_id: 's:40', client_name: 's:80', staff_id: 's:40', service_id: 's:40', service_name: 's:80', category: 'c', price: 'n', minutes: 'n',
-    date: 'd', time: 't', status: 'status', notes: 's:1000', seen: 'b', from_sub: 'b', wa_sent: 'b', reminder_email_sent: 'b',
+    date: 'd', time: 't', status: 'status', notes: 's:1000', seen: 'b', from_sub: 'b', wa_sent: 'b', reminder_email_sent: 'b', color: 's:300',
   },
   subscriptions: { client_id: 's:40', staff_id: 's:40', start_date: 'd', price: 'n', total: 'n', uses: 'a' },
   gallery: { url: 's:300', caption: 's:120', sort: 'n' },

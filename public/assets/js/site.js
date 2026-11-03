@@ -67,6 +67,7 @@ function start() {
     <div><h4>Pagine</h4>${PAGES.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}<a href="/prenota">Prenota</a></div>
     <div><h4>Contatti</h4>${phoneLink(s)}${mailLink(s)}${waLink(s)}${socialLinks(s)}</div></div>
     <div class="c"><span>© ${new Date().getFullYear()} ${esc(s.name)}</span><a href="/admin" style="display:inline;margin:0">Area riservata</a></div></div></footer>`;
+  if (page !== 'prenota') document.body.insertAdjacentHTML('beforeend', '<a class="mcta" href="/prenota">Prenota ora</a>');
   ({ home, servizi, team, galleria, prenota, contatti }[page] || (() => { }))();
   const io = new IntersectionObserver(e => e.forEach(x => { if (x.isIntersecting) { x.target.classList.add('in'); io.unobserve(x.target); } }), { threshold: .08 });
   document.querySelectorAll('.fade').forEach(el => io.observe(el));

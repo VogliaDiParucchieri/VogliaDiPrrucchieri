@@ -493,8 +493,8 @@ function pgGuadagni() {
 }
 
 /* ---------- STORICO ---------- */
-const H = { range: '90', gran: 'giorno', cat: '', q: '' };
-function pgStorico() {
+const H = { view: 'incassi', range: '90', gran: 'giorno', cat: '', q: '' };
+function pgStoricoIncassi() {
   let T = txs();
   const t = today(), from = H.range === 'all' ? '0000-00-00' : H.range === '365' ? addD(t, -365) : addD(t, -(+H.range));
   T = T.filter(x => x.d >= from && x.d <= t && (!H.cat || x.cat === H.cat) && (!H.q || (x.client + ' ' + x.label).toLowerCase().includes(H.q.toLowerCase())));
@@ -522,6 +522,46 @@ function exportCsv() {
   const q = v => '"' + String(v).replace(/"/g, '""') + '"';
   const csv = 'Data,Cliente,Servizio,Operatore,Categoria,Importo\n' + L.map(x => [x.d, q(x.client), q(x.label), q(x.staff ? sname(x.staff) : ''), x.cat, x.a].join(',')).join('\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'storico-incassi.csv'; a.click();
+}
+
+/* ---------- STORICO: incassi + storico del cliente (con note sul colore) ---------- */
+const HC = { q: '', cid: '' };
+const histTabs = () => `<div class="tabs"><button class="${H.view !== 'cliente' ? 'on' : ''}" onclick="H.view='incassi';draw()">📈 Storico incassi</button><button class="${H.view === 'cliente' ? 'on' : ''}" onclick="H.view='cliente';draw()">👤 Storico del cliente</button></div>`;
+function pgStorico() { return histTabs() + (H.view === 'cliente' ? pgStoricoCliente() : pgStoricoIncassi()); }
+const colorTxt = c => String(c || '').trim().replace(/^colore\s*[:\-]?\s*/i, '');
+function histMatches() {
+  const q = HC.q.trim().toLowerCase(), digits = q.replace(/\D/g, '');
+  const l = [...A.clients].sort((a, b) => a.name.localeCompare(b.name));
+  if (!q) return l.slice(0, 12);
+  return l.filter(c => c.name.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (digits.length >= 3 && (c.phone || '').replace(/\D/g, '').includes(digits)));
+}
+function pgStoricoCliente() {
+  const c = HC.cid && cli(HC.cid), m = c ? [] : histMatches();
+  let body = '';
+  if (c) {
+    const hist = A.appts.filter(a => a.client_id === c.id && a.status !== 'cancelled').sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+    const spent = hist.filter(a => a.status === 'done').reduce((t, a) => t + +a.price, 0);
+    body = `<div class="card"><h2><span>${esc(c.name)} <span class="mu">${esc(c.phone || '')}</span></span><button class="btn sec sm" onclick="HC.cid='';HC.q='';draw()">← Cambia cliente</button></h2>
+      <div class="grid" style="margin-bottom:6px"><div class="stat"><div class="l">Appuntamenti</div><div class="v">${hist.length}</div></div>
+      ${A.emp ? '' : `<div class="stat"><div class="l">Speso in totale</div><div class="v">${money(spent)}</div></div>`}
+      <div class="stat"><div class="l">Ultima visita</div><div class="v" style="font-size:22px">${hist.find(a => a.status === 'done') ? fdate(hist.find(a => a.status === 'done').date) : '—'}</div></div></div></div>
+     <div class="card"><h2>Appuntamenti e colori</h2>${hist.length ? hist.map(a => `<div class="item"><div><b>${fdate(a.date)} ${a.time}</b> · ${esc(a.service_name)} con ${esc(sname(a.staff_id))}${a.color ? `, <span class="colr">colore ${esc(colorTxt(a.color))}</span>` : ''}<br>
+       <span class="tag ${STATUS[a.status][1]}">${STATUS[a.status][0]}</span> <span class="mu">${a.from_sub ? 'abbonamento' : money(a.price)}${a.notes ? ' · 📝 ' + esc(a.notes) : ''}</span></div>
+       <div class="act"><button class="btn sec sm" onclick="colorModal('${a.id}')">🎨 ${a.color ? 'Modifica colore' : 'Colore'}</button></div></div>`).join('') : '<div class="mu">Nessun appuntamento per questo cliente</div>'}</div>`;
+  } else {
+    body = `<div class="card"><h2>Scegli il cliente</h2><input id="hcq" value="${esc(HC.q)}" placeholder="🔍 Cerca per nome, telefono o email…" autocomplete="off" oninput="HC.q=this.value;redrawKeep('hcq')">
+      ${m.length ? m.map(x => `<div class="item pick" onclick="HC.cid='${x.id}';draw()"><span><b>${esc(x.name)}</b> <span class="mu">${esc(x.phone || '')} ${esc(x.email || '')}</span></span><span class="mu">${A.appts.filter(a => a.client_id === x.id && a.status !== 'cancelled').length} appuntamenti →</span></div>`).join('') : '<div class="mu" style="padding:8px 0">Nessun cliente trovato.</div>'}
+      ${!HC.q.trim() && A.clients.length > 12 ? '<div class="mu" style="padding-top:8px">Mostrati i primi 12: scrivi per cercare gli altri.</div>' : ''}</div>`;
+  }
+  return body;
+}
+function colorModal(id) {
+  const a = A.appts.find(x => x.id === id); if (!a) return;
+  modal('Colore · ' + esc(a.client_name || cname(a.client_id)),
+    `<p class="mu" style="margin:0 0 8px">${fdate(a.date)} ${a.time} · ${esc(a.service_name)} con ${esc(sname(a.staff_id))}</p><label>Che colore hai fatto?</label>
+     <textarea id="f_col" rows="3" maxlength="300" placeholder="Es. rosso ramato 6.64 + ossidante 20 vol, 35 minuti di posa">${esc(colorTxt(a.color))}</textarea>`,
+    async () => { await api('PATCH', '/api/admin/appointments/' + id, { color: $('#f_col').value.trim() }); toast('Colore salvato'); return true; });
+  setTimeout(() => $('#f_col')?.focus(), 50);
 }
 
 /* ---------- PROMEMORIA (email Resend + WhatsApp) ---------- */

@@ -95,6 +95,7 @@ create table if not exists admins (
 -- Se avevi già creato le tabelle, queste righe aggiungono le colonne nuove (puoi rieseguire tutto senza problemi):
 alter table staff add column if not exists boss_id text default '';
 alter table appointments add column if not exists booking_code text default '';
+alter table appointments add column if not exists color text default '';
 alter table admins add column if not exists role text default 'titolare';
 alter table admins alter column staff_id drop not null;
 alter table admins alter column staff_id set default '';
