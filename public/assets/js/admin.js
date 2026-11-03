@@ -409,7 +409,7 @@ function clientForm(c) {
    <div class="row"><div><label>Telefono (WhatsApp)</label><input id="c_p" type="tel" value="${esc(c?.phone)}"></div><div><label>Email (promemoria)</label><input id="c_e" type="email" value="${esc(c?.email)}"></div></div>
    <label>📝 Note cliente</label><textarea id="c_t" rows="4">${esc(c?.notes)}</textarea>
    <button class="btn" onclick="saveClient('${c?.id || ''}')">${c ? 'Salva modifiche' : 'Crea cliente'}</button>
-   ${c ? `<button class="btn wa" onclick="waClient('${c.id}')">WhatsApp</button><button class="btn del" onclick="delClient('${c.id}')">Elimina</button>` : `<button class="btn sec" onclick="CL.sel=null;draw()">Annulla</button>`}</div>`;
+   ${c ? `<button class="btn wa" onclick="waClient('${c.id}')">WhatsApp</button><button class="btn sec" onclick="shopModal('${c.id}')">🛍️ Acquisto in negozio</button><button class="btn del" onclick="delClient('${c.id}')">Elimina</button>` : `<button class="btn sec" onclick="CL.sel=null;draw()">Annulla</button>`}</div>`;
 }
 function clientDetail(c) {
   const s = activeSub(c.id), hist = A.appts.filter(a => a.client_id === c.id).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
@@ -564,7 +564,7 @@ function pgStoricoCliente() {
   if (c) {
     const hist = A.appts.filter(a => a.client_id === c.id && a.status !== 'cancelled').sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
     const spent = hist.filter(a => a.status === 'done').reduce((t, a) => t + +a.price, 0) + A.purchases.filter(p => p.client_id === c.id).reduce((t, p) => t + +p.price, 0);
-    body = `<div class="card"><h2><span>${esc(c.name)} <span class="mu">${esc(c.phone || '')}</span></span><button class="btn sec sm" onclick="HC.cid='';HC.q='';draw()">← Cambia cliente</button></h2>
+    body = `<div class="card"><h2><span>${esc(c.name)} <span class="mu">${esc(c.phone || '')}</span></span><span><button class="btn sm" onclick="shopModal('${c.id}')">🛍️ Acquisto in negozio</button><button class="btn sec sm" onclick="HC.cid='';HC.q='';draw()">← Cambia cliente</button></span></h2>
       <div class="grid" style="margin-bottom:6px"><div class="stat"><div class="l">Appuntamenti</div><div class="v">${hist.length}</div></div>
       ${A.emp ? '' : `<div class="stat"><div class="l">Speso in totale</div><div class="v">${money(spent)}</div></div>`}
       <div class="stat"><div class="l">Ultima visita</div><div class="v" style="font-size:22px">${hist.find(a => a.status === 'done') ? fdate(hist.find(a => a.status === 'done').date) : '—'}</div></div></div></div>
