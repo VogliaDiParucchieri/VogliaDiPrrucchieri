@@ -342,3 +342,11 @@ html,body{overflow-x:clip}
 .amd-in .x{position:absolute;right:14px;top:10px;border:0;background:none;font-size:30px;line-height:1;color:var(--mu);cursor:pointer;padding:6px 10px}
 @keyframes sheet{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
 @media(min-width:700px){.amd{align-items:center}.amd-in{border-radius:20px}}
+
+/* ---------- recupero password e calendario ---------- */
+.forgot{display:block;margin:14px auto 0;color:var(--gold)!important;text-decoration:underline;text-transform:none!important;letter-spacing:0!important;font:600 13.5px Inter!important}
+.fh{font:italic 500 22px 'Playfair Display',serif;margin:16px 0 4px}
+.calbox{background:#fff;border:1px dashed var(--gold);border-radius:14px;padding:16px;margin:0 auto 18px;max-width:460px}
+.calbox b{display:block;font:700 11px Inter;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+.calbtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}.calbtns .bt{margin:0;flex:1 1 160px;margin-top:0!important}
+.calmini{display:block;margin-top:5px;font-size:12.5px}.calmini a,.calmini .lnk{color:var(--gold);text-decoration:underline;font:600 12.5px Inter;text-transform:none;letter-spacing:0}

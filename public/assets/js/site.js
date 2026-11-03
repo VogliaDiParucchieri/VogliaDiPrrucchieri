@@ -264,6 +264,7 @@ function wizard() {
       <p class="mu">Il tuo appuntamento è stato registrato con successo.</p>
       <div class="code"><small>Codice prenotazione</small><b>${esc(r.code)}</b><span>Comunicalo se ci contatti per modificare o disdire.</span></div>
       <div class="bx" style="text-align:left">${[['Cliente', B.who], ['Servizio', g.name], ['Operatore', r.staff], ['Data e ora', longDate(B.date) + ' alle ' + B.slot], ['Prezzo', money(r.price)], ['Luogo', D.shop.address]].map(([k, v]) => `<div class="kv"><span>${k}:</span><b>${esc(v)}</b></div>`).join('')}</div>
+      ${calBox()}
       ${B.acct === 'new' ? '<div class="acc-note ok">✓ Account creato: resti collegato su questo dispositivo e i tuoi dati saranno già compilati la prossima volta.</div>' : B.acct ? `<div class="acc-note">${esc(B.acct)}</div>` : ME ? '<div class="acc-note ok">Trovi questo appuntamento nel <a href="/account" style="text-decoration:underline">tuo account</a>.</div>' : ''}
       <p class="mu">Per disdire o spostare chiamaci al ${esc(D.shop.phone)}.</p>
       <button class="bt" onclick="B={step:1,pre:B.pre};wizard()">Nuova prenotazione</button></div>`;
@@ -308,12 +309,13 @@ async function refreshMe() {
   const m = await fetch('/api/account/me').then(r => r.json()).catch(() => ({}));
   ME = m.account || null; MYAPPTS = m.appointments || []; syncNav();
 }
-const authBox = mode => `<div class="acc-tabs"><button type="button" class="${mode === 'login' ? 'on' : ''}" onclick="authMode('login')">Accedi</button><button type="button" class="${mode === 'reg' ? 'on' : ''}" onclick="authMode('reg')">Crea account</button></div><div id="ae" class="down err"></div>
+const authBox0 = mode => `<div class="acc-tabs"><button type="button" class="${mode === 'login' ? 'on' : ''}" onclick="authMode('login')">Accedi</button><button type="button" class="${mode === 'reg' ? 'on' : ''}" onclick="authMode('reg')">Crea account</button></div><div id="ae" class="down err"></div>
   ${mode === 'login'
     ? `<label class="lb2">Telefono o email</label><input id="al" autocomplete="username" maxlength="120" placeholder="+39 340 1234567">
        <label class="lb2">Password</label><input id="ap" type="password" autocomplete="current-password" maxlength="100" onkeydown="if(event.key==='Enter')doAuth('login')">
        <label class="rem"><input type="checkbox" id="ar" checked> Resta connesso su questo dispositivo</label>
-       <button class="bt" type="button" style="width:100%;margin-top:14px" id="ago" onclick="doAuth('login')">Accedi</button>`
+       <button class="bt" type="button" style="width:100%;margin-top:14px" id="ago" onclick="doAuth('login')">Accedi</button>
+       <button type="button" class="lnk forgot" onclick="authMode('forgot')">Password dimenticata?</button>`
     : `<div class="row2"><div><label class="lb2">Nome *</label><input id="rn" autocomplete="given-name" maxlength="40"></div><div><label class="lb2">Cognome *</label><input id="rs" autocomplete="family-name" maxlength="40"></div></div>
        <label class="lb2">Telefono *</label><input id="rp" type="tel" autocomplete="tel" maxlength="30" placeholder="+39 340 1234567">
        <label class="lb2">Email *</label><input id="rm" type="email" required autocomplete="email" maxlength="120">
@@ -351,13 +353,14 @@ async function logout() {
 }
 const STLAB = { booked: 'Confermato', done: 'Completato', noshow: 'Non presentato' };
 const apptCard = a => `<div class="apt"><div class="d"><b>${+a.date.slice(8)}</b><small>${new Date(a.date + 'T12:00').toLocaleDateString('it-IT', { month: 'short' })}</small></div>
-  <div class="in"><b>${esc(a.service_name)}</b><span>${esc(longDate(a.date))} · ${a.time}${a.staff ? ' · con ' + esc(a.staff) : ''}</span></div><em class="stt ${a.status}">${STLAB[a.status] || ''}</em></div>`;
+  <div class="in"><b>${esc(a.service_name)}</b><span>${esc(longDate(a.date))} · ${a.time}${a.staff ? ' · con ' + esc(a.staff) : ''}</span>${calMini(a)}</div><em class="stt ${a.status}">${STLAB[a.status] || ''}</em></div>`;
 function account() {
   $('#main').innerHTML = `<div class="page-hd"><div class="eb">Area clienti</div><h1>Il tuo account</h1></div><section class="sec"><div class="wrap"><div class="acc" id="accv"></div></div></section>`;
   drawAccount();
 }
 function drawAccount() {
   const el = $('#accv'); if (!el) return;
+  if (RESET) { el.innerHTML = resetCard(); return; }
   if (!ME) {
     el.innerHTML = `<div class="bx acc-in"><h3 class="sh">Accedi o registrati</h3><p class="mu" style="margin:0 0 6px">Con un account i tuoi dati si compilano da soli quando prenoti e resti collegato su questo telefono.</p><div id="authbox">${authBox(AUTH.mode)}</div></div>`;
     return;
@@ -399,6 +402,8 @@ async function send() {
     const j = await r.json();
     if (r.ok) {
       B.done = j; B.who = data.name + ' ' + data.surname; B.step = 5; B.acct = '';
+      B.ev = { title: g.name + ' · ' + D.shop.name, date: B.date, time: B.slot, minutes: j.minutes || 30, location: D.shop.address, uid: j.code,
+        desc: 'Operatore: ' + j.staff + '\nCodice prenotazione: ' + j.code + '\nPer spostare o disdire chiama ' + D.shop.phone };
       if (wantAcc) { // crea l'account con gli stessi dati e resta collegato
         const a = await fetch('/api/account/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data, password: pw, remember: true }) })
           .then(async x => ({ ok: x.ok, j: await x.json().catch(() => ({})) })).catch(() => ({ ok: false, j: {} }));
@@ -410,3 +415,76 @@ async function send() {
     if (r.status === 409) setTimeout(() => { B.step = 3; B.slot = null; wizard(); }, 1500);
   } catch { err('Connessione assente, riprova.'); }
 }
+
+/* ---------- recupero password ---------- */
+let RESET = new URLSearchParams(location.search).get('reset') || '';
+const authBox = mode => mode === 'forgot' ? forgotBox() : authBox0(mode);
+const forgotBox = () => `<div class="acc-tabs"><button type="button" onclick="authMode('login')">Accedi</button><button type="button" onclick="authMode('reg')">Crea account</button></div>
+  <h4 class="fh">Recupera la password</h4><p class="mu" style="margin:0 0 4px">Scrivi l'email del tuo account: ti inviamo un link per sceglierne una nuova.</p><div id="ae" class="down err"></div>
+  <label class="lb2">Email</label><input id="fe" type="email" autocomplete="email" maxlength="120" onkeydown="if(event.key==='Enter')doForgot()">
+  <button class="bt" type="button" style="width:100%;margin-top:14px" id="ago" onclick="doForgot()">Invia il link</button>
+  <button type="button" class="lnk forgot" onclick="authMode('login')">← Torna all'accesso</button>`;
+async function doForgot() {
+  const em = ($('#fe')?.value || '').trim(), btn = $('#ago'), er = $('#ae');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)) { er.textContent = 'Inserisci un indirizzo email valido'; return; }
+  btn.disabled = true; er.textContent = '';
+  try {
+    const r = await fetch('/api/account/forgot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { er.textContent = j.error || 'Errore'; btn.disabled = false; return; }
+    $('#authbox').innerHTML = `<div class="acc-note ok" style="margin-top:14px">✓ Se esiste un account con <b>${esc(em)}</b>, ti abbiamo inviato un link per scegliere una nuova password. Controlla anche la cartella spam: il link vale 1 ora.</div>
+      <button type="button" class="lnk forgot" onclick="authMode('login')">← Torna all'accesso</button>`;
+  } catch { er.textContent = 'Connessione assente, riprova.'; btn.disabled = false; }
+}
+const resetCard = () => `<div class="bx acc-in"><h3 class="sh">Scegli una nuova password</h3><div id="ae" class="down err"></div>
+  <label class="lb2">Nuova password (min. 8 caratteri)</label><input id="nw" type="password" autocomplete="new-password" maxlength="100">
+  <label class="lb2">Ripeti la password</label><input id="nw2" type="password" autocomplete="new-password" maxlength="100" onkeydown="if(event.key==='Enter')doReset()">
+  <button class="bt" type="button" style="width:100%;margin-top:16px" id="ago" onclick="doReset()">Salva e accedi</button></div>`;
+async function doReset() {
+  const pw = $('#nw').value, er = $('#ae'), btn = $('#ago');
+  if (pw.length < 8) { er.textContent = 'La password deve avere almeno 8 caratteri'; return; }
+  if (pw !== $('#nw2').value) { er.textContent = 'Le due password non coincidono'; return; }
+  btn.disabled = true; er.textContent = '';
+  try {
+    const r = await fetch('/api/account/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: RESET, password: pw }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      er.innerHTML = esc(j.error || 'Errore') + (r.status === 400 && /link/.test(j.error || '') ? ' <button type="button" class="lnk forgot" onclick="RESET=\'\';AUTH.mode=\'forgot\';history.replaceState(null,\'\',\'/account\');drawAccount()">Richiedi un nuovo link</button>' : '');
+      btn.disabled = false; return;
+    }
+    RESET = ''; history.replaceState(null, '', '/account');
+    await refreshMe(); drawAccount();
+    document.querySelector('#accv .bx h3')?.insertAdjacentHTML('afterend', '<div class="okmsg">✓ Password aggiornata: sei collegato.</div>');
+  } catch { er.textContent = 'Connessione assente, riprova.'; btn.disabled = false; }
+}
+
+/* ---------- aggiungi al calendario (Google Calendar e file .ics per Apple / Outlook) ---------- */
+const calStamp = (date, time, plus = 0) => {
+  const [y, m, d] = date.split('-').map(Number), [h, mi] = time.split(':').map(Number), t = new Date(y, m - 1, d, h, mi + plus), p = n => String(n).padStart(2, '0');
+  return '' + t.getFullYear() + p(t.getMonth() + 1) + p(t.getDate()) + 'T' + p(t.getHours()) + p(t.getMinutes()) + '00';
+};
+const calEv = key => {
+  if (key === 'new') return B.ev;
+  const a = MYAPPTS.find(x => x.id === key); if (!a) return null;
+  return { title: a.service_name + ' · ' + D.shop.name, date: a.date, time: a.time, minutes: a.minutes || 30, location: D.shop.address, uid: a.code || a.id,
+    desc: (a.staff ? 'Operatore: ' + a.staff + '\n' : '') + (a.code ? 'Codice prenotazione: ' + a.code + '\n' : '') + 'Per spostare o disdire chiama ' + D.shop.phone };
+};
+const gcalUrl = ev => 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(ev.title) + '&dates=' + calStamp(ev.date, ev.time) + '/' + calStamp(ev.date, ev.time, ev.minutes)
+  + '&details=' + encodeURIComponent(ev.desc) + '&location=' + encodeURIComponent(ev.location) + '&ctz=Europe%2FRome';
+function dlIcs(key) {
+  const ev = calEv(key); if (!ev) return;
+  const e = s => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Voglia di//Prenotazioni//IT', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
+    'UID:' + (ev.uid || Date.now()) + '@vogliadi', 'DTSTAMP:' + new Date().toISOString().replace(/[-:]|\.\d{3}/g, ''),
+    'DTSTART:' + calStamp(ev.date, ev.time), 'DTEND:' + calStamp(ev.date, ev.time, ev.minutes),
+    'SUMMARY:' + e(ev.title), 'LOCATION:' + e(ev.location), 'DESCRIPTION:' + e(ev.desc), 'STATUS:CONFIRMED',
+    'BEGIN:VALARM', 'TRIGGER:-P1D', 'ACTION:DISPLAY', 'DESCRIPTION:Domani hai un appuntamento', 'END:VALARM',
+    'BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY', 'DESCRIPTION:Appuntamento tra un\'ora', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'];
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([L.join('\r\n')], { type: 'text/calendar;charset=utf-8' }));
+  a.download = 'appuntamento-voglia-di.ics'; document.body.append(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000);
+}
+const calBox = () => B.ev ? `<div class="calbox"><b>📅 Aggiungi al calendario</b><div class="calbtns"><a class="bt o sm" target="_blank" rel="noopener" href="${gcalUrl(B.ev)}">Google Calendar</a><button class="bt o sm" type="button" onclick="dlIcs('new')">Apple / Outlook</button></div></div>` : '';
+const calMini = a => a.status === 'booked' && a.date >= iso(new Date()) && calEv(a.id)
+  ? `<span class="calmini">📅 <a href="${gcalUrl(calEv(a.id))}" target="_blank" rel="noopener">Google</a> · <button type="button" class="lnk" onclick="dlIcs('${a.id}')">Apple / Outlook</button></span>` : '';

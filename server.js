@@ -6,7 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const zlib = require('zlib');
 const { createStore } = require('./lib/store');
-const { sendReminders, sendCampaign, campaignHtml, startScheduler, isoDate } = require('./lib/mail');
+const { sendReminders, sendCampaign, campaignHtml, sendPasswordReset, startScheduler, isoDate } = require('./lib/mail');
 const { createTestData, removeTestData } = require('./lib/seed');
 
 /* ---------- configurazione (.env) ---------- */
@@ -143,6 +143,22 @@ function readToken(req, name = 'sid') {
 }
 const cookie = (v, age) => `sid=${v}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${env.NODE_ENV === 'production' ? '; Secure' : ''}`;
 
+// recupero password: link firmato, valido 1 ora e utilizzabile una volta sola (contiene l'impronta della password attuale)
+const pwPrint = a => crypto.createHash('sha256').update(String(a.pass || '')).digest('hex').slice(0, 16);
+function makeResetToken(a) {
+  const p = Buffer.from(JSON.stringify({ a: a.id, e: Date.now() + 3600e3, f: pwPrint(a) })).toString('base64url');
+  return p + '.' + sign(p);
+}
+function readResetToken(store, token) {
+  const [p, s] = String(token || '').split('.');
+  if (!p || !s) return null;
+  const good = sign(p);
+  if (s.length !== good.length || !crypto.timingSafeEqual(Buffer.from(s), Buffer.from(good))) return null;
+  try {
+    const d = JSON.parse(Buffer.from(p, 'base64url').toString()), a = store.get('accounts', d.a);
+    return a && d.e > Date.now() && d.f === pwPrint(a) ? a : null;
+  } catch { return null; }
+}
 // cookie degli account clienti: "resta connesso" = 180 giorni, altrimenti scade alla chiusura del browser
 const ccookie = (v, age) => `cid=${v}; HttpOnly; SameSite=Lax; Path=/${v === '' ? '; Max-Age=0' : age ? '; Max-Age=' + age : ''}${env.NODE_ENV === 'production' || env.VERCEL ? '; Secure' : ''}`;
 
@@ -363,6 +379,33 @@ async function api(store, req, res, url) {
       const a = store.rows('accounts').find(x => id.includes('@') ? x.email === id : d.length >= 6 && digitsOf(x.phone) === d);
       if (!a || !checkPw(String(b.password || ''), a.pass)) throw fail(401, 'Telefono, email o password errati');
       return json(res, 200, { ok: true, account: view(a) }, session(a, b.remember !== false));
+    }
+    if (route === 'POST /api/account/forgot') {
+      if (limited(ip, 'acc-forgot', 5, 3600e3)) throw fail(429, 'Troppe richieste, riprova più tardi');
+      const em = clean((await readBody(req)).email, 120).toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)) throw fail(400, 'Inserisci un indirizzo email valido');
+      const a = store.rows('accounts').find(x => x.email === em);
+      // risposta sempre uguale: non si scopre quali email sono registrate
+      if (a && !limited(ip, 'acc-forgot-' + em, 3, 3600e3)) {
+        const host = req.headers.host || '', local = /^(localhost|127\.|192\.168\.|10\.)/.test(host);
+        const link = (env.SITE_URL || (local ? 'http://' + host : 'https://www.vogliadiparrucchieri.shop')).replace(/\/$/, '') + '/account?reset=' + makeResetToken(a);
+        try {
+          const r = await sendPasswordReset(env, shop, a.email, a.name, link);
+          if (!r.sent && env.NODE_ENV !== 'production') console.log('[recupero password, email non configurata] ' + link);
+        } catch (e) { console.error('Recupero password: invio email non riuscito:', e.message); }
+      }
+      return json(res, 200, { ok: true });
+    }
+    if (route === 'POST /api/account/reset') {
+      if (limited(ip, 'acc-reset', 10, 3600e3)) throw fail(429, 'Troppi tentativi, riprova più tardi');
+      const b = await readBody(req), pw = String(b.password || '');
+      if (pw.length < 8 || pw.length > 100) throw fail(400, 'La password deve avere almeno 8 caratteri');
+      return store.lock(async () => {
+        const a = readResetToken(store, b.token);
+        if (!a) throw fail(400, 'Il link non è valido o è scaduto: richiedine uno nuovo.');
+        await store.update('accounts', a.id, { pass: hashPw(pw) });
+        return json(res, 200, { ok: true, account: view(a) }, session(a, true));
+      });
     }
     if (route === 'POST /api/account/logout') return json(res, 200, { ok: true }, { 'Set-Cookie': ccookie('', 0) });
     if (route === 'PATCH /api/account/me') {
