@@ -81,6 +81,17 @@ create table if not exists purchases (   -- acquisti in negozio (prodotti)
   created_at timestamptz default now()
 );
 
+create table if not exists accounts (    -- account dei clienti del sito (prenotazione precompilata)
+  id text primary key,
+  name text not null,
+  surname text default '',
+  phone text not null,
+  email text default '',
+  pass text not null,               -- hash scrypt
+  client_id text default '',
+  created_at timestamptz default now()
+);
+
 create table if not exists gallery (
   id text primary key,
   url text not null,
@@ -116,6 +127,7 @@ alter table clients enable row level security;
 alter table appointments enable row level security;
 alter table subscriptions enable row level security;
 alter table purchases enable row level security;
+alter table accounts enable row level security;
 alter table gallery enable row level security;
 alter table settings enable row level security;
 alter table admins enable row level security;

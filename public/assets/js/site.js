@@ -54,7 +54,7 @@ document.addEventListener('click', e => {
 addEventListener('pageshow', e => { if (e.persisted) document.body.classList.remove('leaving'); });
 
 if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => { }));
-fetch('/api/public').then(r => r.json()).then(d => { D = d; start(); })
+Promise.all([fetch('/api/public').then(r => r.json()), fetch('/api/account/me').then(r => r.json()).catch(() => ({}))]).then(([d, m]) => { D = d; ME = m.account || null; MYAPPTS = m.appointments || []; start(); })
   .catch(() => { $('#main').innerHTML = '<div class="wrap" style="padding:120px 24px;text-align:center"><h2>Servizio momentaneamente non disponibile</h2><p class="mu" style="margin:10px 0 26px">Stiamo avendo un problema tecnico. Riprova tra qualche minuto.</p><button class="bt" onclick="location.reload()">Riprova</button></div>'; });
 
 function start() {
@@ -62,14 +62,14 @@ function start() {
   seo(s);
   $('#hdr').innerHTML = `<header class="hd"><div class="in"><a class="logo" href="/"><img src="/assets/img/logo.png" width="640" height="326" alt="${esc(s.name)} ${esc(s.tagline)} a ${esc(s.city)}"></a>
     <button class="burger" aria-label="Menu" onclick="document.querySelector('.nav').classList.toggle('open')">☰</button>
-    <nav class="nav">${PAGES.map(([h, l, k]) => `<a href="${h}" class="${page === k ? 'on' : ''}">${l}</a>`).join('')}<a class="bt sm" style="color:#fff" href="/prenota">Prenota</a></nav></div></header>`;
+    <nav class="nav">${PAGES.map(([h, l, k]) => `<a href="${h}" class="${page === k ? 'on' : ''}">${l}</a>`).join('')}<a href="/account" class="${page === 'account' ? 'on' : ''}" data-acc>${accLabel()}</a><a class="bt sm" style="color:#fff" href="/prenota">Prenota</a></nav></div></header>`;
   $('#ftr').innerHTML = `<footer class="ft"><div class="wrap"><div class="g">
     <div><img class="flogo" src="/assets/img/logo.png" width="640" height="326" loading="lazy" alt="${esc(s.name)}"><p>${esc(s.tagline)}<br>${esc(s.address)}</p></div>
     <div><h4>Pagine</h4>${PAGES.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}<a href="/prenota">Prenota</a></div>
     <div><h4>Contatti</h4>${phoneLink(s)}${mailLink(s)}${waLink(s)}${socialLinks(s)}</div></div>
     <div class="c"><span>© ${new Date().getFullYear()} ${esc(s.name)}</span><a href="/admin" style="display:inline;margin:0">Area riservata</a></div></div></footer>`;
-  if (page !== 'prenota') document.body.insertAdjacentHTML('beforeend', '<a class="mcta" href="/prenota">Prenota ora</a>');
-  ({ home, servizi, team, galleria, prenota, contatti }[page] || (() => { }))();
+  document.body.insertAdjacentHTML('beforeend', bottomNav());
+  ({ home, servizi, team, galleria, prenota, contatti, account }[page] || (() => { }))();
   const io = new IntersectionObserver(e => e.forEach(x => { if (x.isIntersecting) { x.target.classList.add('in'); io.unobserve(x.target); } }), { threshold: .08 });
   document.querySelectorAll('.fade').forEach(el => io.observe(el));
 }
@@ -251,11 +251,12 @@ function wizard() {
       `<div class="two"><div class="bx"><h3 class="sh">Dettagli prenotazione</h3>
         ${[['Trattamento', g.name], ['Operatore', staffName()], ['Data', longDate(B.date)], ['Orario di inizio', B.slot], ['Durata prevista', minTxt(g)], ['Luogo', D.shop.address]].map(([k, v]) => `<div class="kv"><span>${k}:</span><b>${esc(v)}</b></div>`).join('')}
         <div class="tot"><span>Prezzo totale al salone</span><b>${priceTxt(g)}</b></div><p class="mu sm2">Pagamento diretto in negozio (contanti o carta)</p></div>
-       <div class="bx"><h3 class="sh">I tuoi dati di contatto</h3><div id="be" class="down err"></div>
-        <div class="row2"><div><label class="lb2">Nome *</label><input id="bn" autocomplete="given-name" maxlength="40" placeholder="Mario"></div><div><label class="lb2">Cognome *</label><input id="bs" autocomplete="family-name" maxlength="40" placeholder="Rossi"></div></div>
-        <label class="lb2">Numero di telefono (per conferma e promemoria) *</label><input id="bp" type="tel" autocomplete="tel" maxlength="30" placeholder="+39 340 1234567">
-        <label class="lb2">Indirizzo email (facoltativo)</label><input id="bm" type="email" autocomplete="email" maxlength="120" placeholder="mario.rossi@example.com">
+       <div class="bx"><h3 class="sh">I tuoi dati di contatto</h3>${accBanner()}<div id="be" class="down err"></div>
+        <div class="row2"><div><label class="lb2">Nome *</label><input id="bn" autocomplete="given-name" maxlength="40" placeholder="Mario" value="${esc(ME?.name || '')}"></div><div><label class="lb2">Cognome *</label><input id="bs" autocomplete="family-name" maxlength="40" placeholder="Rossi" value="${esc(ME?.surname || '')}"></div></div>
+        <label class="lb2">Numero di telefono (per conferma e promemoria) *</label><input id="bp" type="tel" autocomplete="tel" maxlength="30" placeholder="+39 340 1234567" value="${esc(ME?.phone || '')}">
+        <label class="lb2">Indirizzo email (facoltativo)</label><input id="bm" type="email" autocomplete="email" maxlength="120" placeholder="mario.rossi@example.com" value="${esc(ME?.email || '')}">
         <label class="lb2">Note per l'operatore (facoltativo)</label><textarea id="bt" rows="2" maxlength="300" placeholder="Es. lunghezza desiderata, pelle sensibile…"></textarea>
+        ${accCreate()}
         <button class="bt" style="width:100%;margin-top:18px" id="bgo" onclick="send()">Conferma definitiva prenotazione</button></div></div>` + backBtn(3);
   } else {
     const g = curGroup(), r = B.done;
@@ -263,6 +264,7 @@ function wizard() {
       <p class="mu">Il tuo appuntamento è stato registrato con successo.</p>
       <div class="code"><small>Codice prenotazione</small><b>${esc(r.code)}</b><span>Comunicalo se ci contatti per modificare o disdire.</span></div>
       <div class="bx" style="text-align:left">${[['Cliente', B.who], ['Servizio', g.name], ['Operatore', r.staff], ['Data e ora', longDate(B.date) + ' alle ' + B.slot], ['Prezzo', money(r.price)], ['Luogo', D.shop.address]].map(([k, v]) => `<div class="kv"><span>${k}:</span><b>${esc(v)}</b></div>`).join('')}</div>
+      ${B.acct === 'new' ? '<div class="acc-note ok">✓ Account creato: resti collegato su questo dispositivo e i tuoi dati saranno già compilati la prossima volta.</div>' : B.acct ? `<div class="acc-note">${esc(B.acct)}</div>` : ME ? '<div class="acc-note ok">Trovi questo appuntamento nel <a href="/account" style="text-decoration:underline">tuo account</a>.</div>' : ''}
       <p class="mu">Per disdire o spostare chiamaci al ${esc(D.shop.phone)}.</p>
       <button class="bt" onclick="B={step:1,pre:B.pre};wizard()">Nuova prenotazione</button></div>`;
   }
@@ -283,15 +285,127 @@ async function loadSlots(g) {
     ? `<div class="slots2">${r.slots.map(s => `<button type="button" ${s.ok ? '' : 'disabled'} class="${s.ok ? 'ok' : 'ko'} ${B.slot === s.time ? 'on' : ''}" title="${s.ok ? 'Disponibile alle ' + s.time : 'Non disponibile (' + (s.reason || 'occupato') + ')'}" onclick="B.slot='${s.time}';B.step=4;wizard()"><span class="dot ${s.ok ? 'g' : 'r'}"></span>${s.time}</button>`).join('')}</div>`
     : '<div class="empty" style="border:0">Nessun orario di apertura disponibile per la data selezionata.<br><small>Il negozio potrebbe essere chiuso per riposo settimanale o festività.</small></div>';
 }
-async function send() {
-  const v = id => $(id).value.trim();
-  $('#bgo').disabled = true; $('#be').textContent = '';
-  const g = curGroup();
+
+/* ---------- account clienti: accesso che resta attivo + prenotazione con dati precompilati ---------- */
+let ME = null, MYAPPTS = [];
+const AUTH = { mode: 'login', cb: null };
+const accLabel = () => ME ? esc(ME.name.split(' ')[0]) : 'Accedi';
+const syncNav = () => document.querySelectorAll('[data-acc]').forEach(e => { e.textContent = ME ? ME.name.split(' ')[0] : 'Accedi'; });
+const ICON = {
+  user: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>',
+  img: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8 9"/></svg>',
+  cal: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17m-11 5 2 2 4-4"/></svg>',
+  cut: '<svg viewBox="0 0 24 24"><circle cx="6" cy="6.5" r="2.8"/><circle cx="6" cy="17.5" r="2.8"/><path d="M8.2 8.2 20 18M8.2 15.8 20 6"/></svg>',
+  users: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 5.2a3.5 3.5 0 0 1 0 6.6M18 14.3c2.2.7 3.5 2.6 3.5 5.7"/></svg>',
+};
+// menu fisso in basso (telefono): Accedi · Galleria · [Prenota] · Servizi · Team
+function bottomNav() {
+  const it = (h, k, l, ic, acc) => `<a href="${h}" class="${page === k ? 'on' : ''}">${ic}<span ${acc ? 'data-acc' : ''}>${l}</span></a>`;
+  return `<nav class="bn" aria-label="Menu principale">${it('/account', 'account', accLabel(), ICON.user, 1)}${it('/galleria', 'galleria', 'Galleria', ICON.img)}
+    <a href="/prenota" class="bk ${page === 'prenota' ? 'on' : ''}"><i>${ICON.cal}</i><span>Prenota</span></a>${it('/servizi', 'servizi', 'Servizi', ICON.cut)}${it('/team', 'team', 'Team', ICON.users)}</nav>`;
+}
+async function refreshMe() {
+  const m = await fetch('/api/account/me').then(r => r.json()).catch(() => ({}));
+  ME = m.account || null; MYAPPTS = m.appointments || []; syncNav();
+}
+const authBox = mode => `<div class="acc-tabs"><button type="button" class="${mode === 'login' ? 'on' : ''}" onclick="authMode('login')">Accedi</button><button type="button" class="${mode === 'reg' ? 'on' : ''}" onclick="authMode('reg')">Crea account</button></div><div id="ae" class="down err"></div>
+  ${mode === 'login'
+    ? `<label class="lb2">Telefono o email</label><input id="al" autocomplete="username" maxlength="120" placeholder="+39 340 1234567">
+       <label class="lb2">Password</label><input id="ap" type="password" autocomplete="current-password" maxlength="100" onkeydown="if(event.key==='Enter')doAuth('login')">
+       <label class="rem"><input type="checkbox" id="ar" checked> Resta connesso su questo dispositivo</label>
+       <button class="bt" type="button" style="width:100%;margin-top:14px" id="ago" onclick="doAuth('login')">Accedi</button>`
+    : `<div class="row2"><div><label class="lb2">Nome *</label><input id="rn" autocomplete="given-name" maxlength="40"></div><div><label class="lb2">Cognome *</label><input id="rs" autocomplete="family-name" maxlength="40"></div></div>
+       <label class="lb2">Telefono *</label><input id="rp" type="tel" autocomplete="tel" maxlength="30" placeholder="+39 340 1234567">
+       <label class="lb2">Email (facoltativa)</label><input id="rm" type="email" autocomplete="email" maxlength="120">
+       <label class="lb2">Password * (min. 8 caratteri)</label><input id="rw" type="password" autocomplete="new-password" maxlength="100" onkeydown="if(event.key==='Enter')doAuth('reg')">
+       <label class="rem"><input type="checkbox" id="ar" checked> Resta connesso su questo dispositivo</label>
+       <button class="bt" type="button" style="width:100%;margin-top:14px" id="ago" onclick="doAuth('reg')">Crea il mio account</button>`}`;
+function authMode(m) { AUTH.mode = m; const b = $('#authbox'); if (b) b.innerHTML = authBox(m); }
+async function doAuth(kind) {
+  const v = id => ($(id)?.value || '').trim(), btn = $('#ago'), er = $('#ae');
+  const body = kind === 'login' ? { id: v('#al'), password: $('#ap').value, remember: $('#ar').checked }
+    : { name: v('#rn'), surname: v('#rs'), phone: v('#rp'), email: v('#rm'), password: $('#rw').value, remember: $('#ar').checked };
+  btn.disabled = true; er.textContent = '';
   try {
-    const r = await fetch('/api/book', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ staff_id: B.staff, category: g.category, service_name: g.name, date: B.date, time: B.slot, name: v('#bn'), surname: v('#bs'), phone: v('#bp'), email: v('#bm'), notes: v('#bt') }) });
+    const r = await fetch('/api/account/' + (kind === 'login' ? 'login' : 'register'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { er.textContent = j.error || 'Errore'; btn.disabled = false; return; }
+    await refreshMe();
+    const cb = AUTH.cb; closeAuth();
+    if (cb) cb(); else if (page === 'account') drawAccount();
+  } catch { er.textContent = 'Connessione assente, riprova.'; btn.disabled = false; }
+}
+function openAuth(cb) {
+  AUTH.cb = cb || null; closeAuth();
+  const o = document.createElement('div'); o.className = 'amd'; o.id = 'amd';
+  o.innerHTML = `<div class="amd-in" role="dialog" aria-modal="true"><button class="x" type="button" aria-label="Chiudi" onclick="closeAuth()">×</button><h3>Il tuo account</h3>
+    <p class="mu" style="margin:6px 0 14px">Accedi o crea un account: i tuoi dati si compilano da soli e resti collegato.</p><div id="authbox">${authBox(AUTH.mode)}</div></div>`;
+  o.addEventListener('click', e => { if (e.target === o) closeAuth(); });
+  document.body.append(o);
+}
+function closeAuth() { document.getElementById('amd')?.remove(); }
+async function logout() {
+  await fetch('/api/account/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => { });
+  ME = null; MYAPPTS = []; syncNav();
+  if (page === 'account') drawAccount(); else if (page === 'prenota' && B.step === 4) wizard();
+}
+const STLAB = { booked: 'Confermato', done: 'Completato', noshow: 'Non presentato' };
+const apptCard = a => `<div class="apt"><div class="d"><b>${+a.date.slice(8)}</b><small>${new Date(a.date + 'T12:00').toLocaleDateString('it-IT', { month: 'short' })}</small></div>
+  <div class="in"><b>${esc(a.service_name)}</b><span>${esc(longDate(a.date))} · ${a.time}${a.staff ? ' · con ' + esc(a.staff) : ''}</span></div><em class="stt ${a.status}">${STLAB[a.status] || ''}</em></div>`;
+function account() {
+  $('#main').innerHTML = `<div class="page-hd"><div class="eb">Area clienti</div><h1>Il tuo account</h1></div><section class="sec"><div class="wrap"><div class="acc" id="accv"></div></div></section>`;
+  drawAccount();
+}
+function drawAccount() {
+  const el = $('#accv'); if (!el) return;
+  if (!ME) {
+    el.innerHTML = `<div class="bx acc-in"><h3 class="sh">Accedi o registrati</h3><p class="mu" style="margin:0 0 6px">Con un account i tuoi dati si compilano da soli quando prenoti e resti collegato su questo telefono.</p><div id="authbox">${authBox(AUTH.mode)}</div></div>`;
+    return;
+  }
+  const t = iso(new Date()), isUp = a => a.date >= t && a.status === 'booked';
+  const up = MYAPPTS.filter(isUp).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)), past = MYAPPTS.filter(a => !isUp(a));
+  el.innerHTML = `<div class="two"><div class="bx"><h3 class="sh">Ciao ${esc(ME.name)} 👋</h3><div id="pe" class="err down"></div>
+    <div class="row2"><div><label class="lb2">Nome</label><input id="pn" value="${esc(ME.name)}" maxlength="40"></div><div><label class="lb2">Cognome</label><input id="ps" value="${esc(ME.surname)}" maxlength="40"></div></div>
+    <label class="lb2">Telefono</label><input id="pp" type="tel" value="${esc(ME.phone)}" maxlength="30"><label class="lb2">Email</label><input id="pm" type="email" value="${esc(ME.email)}" maxlength="120">
+    <button class="bt" type="button" style="width:100%;margin-top:16px" onclick="saveProfile()">Salva i miei dati</button>
+    <button class="bt o" type="button" style="width:100%;margin-top:10px" onclick="logout()">Esci</button><p class="mu sm2" style="text-align:center">Resti collegato su questo dispositivo finché non esci.</p></div>
+    <div><div class="bx" style="margin-top:0"><h3 class="sh">Prossimi appuntamenti</h3>${up.length ? up.map(apptCard).join('') : '<p class="mu" style="margin:0 0 14px">Nessun appuntamento in programma.</p><a class="bt" href="/prenota">Prenota ora</a>'}
+      <p class="mu sm2" style="margin-top:12px">Per spostare o disdire chiamaci al ${esc(D.shop.phone)}.</p></div>
+    ${past.length ? `<div class="bx"><h3 class="sh">Storico</h3>${past.slice(0, 10).map(apptCard).join('')}</div>` : ''}</div></div>`;
+}
+async function saveProfile() {
+  const v = id => $(id).value.trim(), er = $('#pe'); er.textContent = '';
+  const r = await fetch('/api/account/me', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: v('#pn'), surname: v('#ps'), phone: v('#pp'), email: v('#pm') }) }).catch(() => null);
+  const j = r ? await r.json().catch(() => ({})) : {};
+  if (!r || !r.ok) { er.textContent = j.error || 'Connessione assente, riprova.'; return; }
+  ME = j.account; syncNav(); drawAccount();
+  const o = document.querySelector('#accv .bx h3'); if (o) o.insertAdjacentHTML('afterend', '<div class="okmsg">✓ Dati salvati</div>');
+}
+// blocchi usati nel passo 4 della prenotazione
+const accBanner = () => ME
+  ? `<div class="acc-note ok">✓ Prenoti come <b>${esc(ME.name)} ${esc(ME.surname)}</b> · <button type="button" class="lnk" onclick="logout()">Non sei tu?</button></div>`
+  : `<div class="acc-note">Hai già un account? <button type="button" class="lnk" onclick="openAuth(wizard)">Accedi</button> e i dati si compilano da soli.</div>`;
+const accCreate = () => ME ? '' : `<label class="rem" style="margin-top:14px"><input type="checkbox" id="bacc" onchange="$('#bpwb').classList.toggle('hide',!this.checked)"> Crea un account per non reinserire i dati la prossima volta</label>
+  <div id="bpwb" class="hide"><label class="lb2">Scegli una password (min. 8 caratteri)</label><input id="bpw" type="password" autocomplete="new-password" maxlength="100"></div>`;
+async function send() {
+  const v = id => $(id).value.trim(), err = m => { $('#bgo').disabled = false; $('#be').textContent = m; };
+  $('#bgo').disabled = true; $('#be').textContent = '';
+  const wantAcc = !ME && !!$('#bacc')?.checked, pw = $('#bpw')?.value || '';
+  if (wantAcc && pw.length < 8) return err("Per creare l'account scegli una password di almeno 8 caratteri");
+  const g = curGroup(), data = { name: v('#bn'), surname: v('#bs'), phone: v('#bp'), email: v('#bm') };
+  try {
+    const r = await fetch('/api/book', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ staff_id: B.staff, category: g.category, service_name: g.name, date: B.date, time: B.slot, ...data, notes: v('#bt') }) });
     const j = await r.json();
-    if (r.ok) { B.done = j; B.who = v('#bn') + ' ' + v('#bs'); B.step = 5; wizard(); return; }
-    $('#bgo').disabled = false; $('#be').textContent = j.error || 'Errore';
+    if (r.ok) {
+      B.done = j; B.who = data.name + ' ' + data.surname; B.step = 5; B.acct = '';
+      if (wantAcc) { // crea l'account con gli stessi dati e resta collegato
+        const a = await fetch('/api/account/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data, password: pw, remember: true }) })
+          .then(async x => ({ ok: x.ok, j: await x.json().catch(() => ({})) })).catch(() => ({ ok: false, j: {} }));
+        if (a.ok) { await refreshMe(); B.acct = 'new'; } else B.acct = a.j.error || 'Account non creato';
+      } else if (ME) await refreshMe();
+      wizard(); return;
+    }
+    err(j.error || 'Errore');
     if (r.status === 409) setTimeout(() => { B.step = 3; B.slot = null; wizard(); }, 1500);
-  } catch { $('#bgo').disabled = false; $('#be').textContent = 'Connessione assente, riprova.'; }
+  } catch { err('Connessione assente, riprova.'); }
 }

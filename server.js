@@ -114,6 +114,8 @@ const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m;
 const fromMin = n => String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0');
 const validDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + 'T12:00:00'));
 const validTime = s => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+// numero di telefono confrontabile: solo cifre, senza prefisso italiano (+39 / 0039)
+const normPhone = v => { let d = String(v || '').replace(/\D/g, ''); if (d.startsWith('0039')) d = d.slice(4); else if (d.startsWith('39') && d.length >= 11) d = d.slice(2); return d; };
 const clean = (s, n) => String(s ?? '').replace(/[<>]/g, '').trim().slice(0, n);
 
 /* ---------- sessioni firmate (cookie) ---------- */
@@ -127,12 +129,12 @@ function initSecret(store) {
   }
 }
 const sign = p => crypto.createHmac('sha256', SECRET).update(p).digest('hex');
-function makeToken(user) {
-  const p = Buffer.from(JSON.stringify({ u: user, e: Date.now() + 14 * 864e5 })).toString('base64url');
+function makeToken(user, days = 14) {
+  const p = Buffer.from(JSON.stringify({ u: user, e: Date.now() + days * 864e5 })).toString('base64url');
   return p + '.' + sign(p);
 }
-function readToken(req) {
-  const m = /(?:^|; )sid=([\w-]+\.[a-f0-9]+)/.exec(req.headers.cookie || '');
+function readToken(req, name = 'sid') {
+  const m = new RegExp('(?:^|; )' + name + '=([\\w-]+\\.[a-f0-9]+)').exec(req.headers.cookie || '');
   if (!m) return null;
   const [p, s] = m[1].split('.');
   const good = sign(p);
@@ -140,6 +142,9 @@ function readToken(req) {
   try { const d = JSON.parse(Buffer.from(p, 'base64url').toString()); return d.e > Date.now() ? d.u : null; } catch { return null; }
 }
 const cookie = (v, age) => `sid=${v}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${env.NODE_ENV === 'production' ? '; Secure' : ''}`;
+
+// cookie degli account clienti: "resta connesso" = 180 giorni, altrimenti scade alla chiusura del browser
+const ccookie = (v, age) => `cid=${v}; HttpOnly; SameSite=Lax; Path=/${v === '' ? '; Max-Age=0' : age ? '; Max-Age=' + age : ''}${env.NODE_ENV === 'production' || env.VERCEL ? '; Secure' : ''}`;
 
 /* ---------- campi consentiti per tabella ---------- */
 const FIELDS = {
@@ -319,10 +324,61 @@ async function api(store, req, res, url) {
       }
     return json(res, 200, { slots: [...map.values()].sort((a, b) => a.time.localeCompare(b.time)) });
   }
+  /* --- account clienti: prenotazione con dati precompilati e accesso che resta attivo --- */
+  if (url.pathname.startsWith('/api/account/')) {
+    if (req.method !== 'GET' && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) throw fail(403, 'Origine non consentita');
+    const digitsOf = normPhone;
+    const mine = () => { const id = readToken(req, 'cid'); return id ? store.get('accounts', id) : null; };
+    const view = a => ({ name: a.name, surname: a.surname, phone: a.phone, email: a.email });
+    const session = (a, remember) => ({ 'Set-Cookie': ccookie(makeToken(a.id, remember ? 180 : 1), remember ? 180 * 86400 : 0) });
+    const personal = b => {
+      const first = clean(b.name, 40), last = clean(b.surname, 40), phone = clean(b.phone, 30), email = clean(b.email, 120).toLowerCase();
+      if (first.length < 2 || last.length < 2 || digitsOf(phone).length < 6) throw fail(400, 'Inserisci nome, cognome e telefono validi');
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw fail(400, 'Email non valida');
+      return { first, last, phone, email };
+    };
+    if (route === 'GET /api/account/me') {
+      const a = mine();
+      if (!a) return json(res, 200, { account: null });
+      const appointments = store.rows('appointments').filter(x => x.client_id === a.client_id && x.status !== 'cancelled')
+        .sort((x, y) => (y.date + y.time).localeCompare(x.date + x.time)).slice(0, 40)
+        .map(x => ({ id: x.id, date: x.date, time: x.time, minutes: x.minutes || 30, service_name: x.service_name, status: x.status, staff: store.get('staff', x.staff_id)?.name || '', code: x.booking_code || '' }));
+      return json(res, 200, { account: view(a), appointments });
+    }
+    if (route === 'POST /api/account/register') {
+      if (limited(ip, 'acc-reg', 6, 3600e3)) throw fail(429, 'Troppe richieste, riprova più tardi');
+      const b = await readBody(req), { first, last, phone, email } = personal(b), pw = String(b.password || '');
+      if (pw.length < 8 || pw.length > 100) throw fail(400, 'La password deve avere almeno 8 caratteri');
+      return store.lock(async () => {
+        if (store.rows('accounts').some(x => digitsOf(x.phone) === digitsOf(phone) || (email && x.email === email))) throw fail(409, 'Esiste già un account con questo telefono o questa email: prova ad accedere.');
+        let c = store.rows('clients').find(x => digitsOf(x.phone) === digitsOf(phone));
+        if (!c) c = await store.insert('clients', { id: uid(), name: (first + ' ' + last).trim(), phone, email, birthday: '', notes: 'Cliente con account online', created_at: new Date().toISOString() });
+        const a = await store.insert('accounts', { id: uid(), name: first, surname: last, phone, email, pass: hashPw(pw), client_id: c.id, created_at: new Date().toISOString() });
+        return json(res, 200, { ok: true, account: view(a) }, session(a, b.remember !== false));
+      });
+    }
+    if (route === 'POST /api/account/login') {
+      if (limited(ip, 'acc-login', 10, 600e3)) throw fail(429, 'Troppi tentativi, attendi qualche minuto');
+      const b = await readBody(req), id = String(b.id || '').trim().toLowerCase(), d = digitsOf(id);
+      const a = store.rows('accounts').find(x => id.includes('@') ? x.email === id : d.length >= 6 && digitsOf(x.phone) === d);
+      if (!a || !checkPw(String(b.password || ''), a.pass)) throw fail(401, 'Telefono, email o password errati');
+      return json(res, 200, { ok: true, account: view(a) }, session(a, b.remember !== false));
+    }
+    if (route === 'POST /api/account/logout') return json(res, 200, { ok: true }, { 'Set-Cookie': ccookie('', 0) });
+    if (route === 'PATCH /api/account/me') {
+      const a = mine(); if (!a) throw fail(401, 'Accedi per modificare i tuoi dati');
+      const { first, last, phone, email } = personal(await readBody(req));
+      if (store.rows('accounts').some(x => x.id !== a.id && (digitsOf(x.phone) === digitsOf(phone) || (email && x.email === email)))) throw fail(409, 'Telefono o email già usati da un altro account');
+      const row = await store.update('accounts', a.id, { name: first, surname: last, phone, email });
+      return json(res, 200, { ok: true, account: view(row) });
+    }
+    throw fail(404, 'Non trovato');
+  }
   if (route === 'POST /api/book') {
     if (limited(ip, 'book', 8, 3600e3)) throw fail(429, 'Troppe richieste, riprova più tardi');
     const b = await readBody(req);
-    const first = clean(b.name, 40), last = clean(b.surname, 40), phone = clean(b.phone, 30), email = clean(b.email, 120).toLowerCase();
+    const accId = readToken(req, 'cid'), acc = accId ? store.get('accounts', accId) : null; // se sei collegato, i dati mancanti arrivano dal tuo account
+    const first = clean(b.name || acc?.name, 40), last = clean(b.surname || acc?.surname, 40), phone = clean(b.phone || acc?.phone, 30), email = clean(b.email ?? acc?.email, 120).toLowerCase();
     const name = (first + ' ' + last).trim();
     if (first.length < 2 || last.length < 2 || phone.replace(/\D/g, '').length < 6) throw fail(400, 'Inserisci nome, cognome e telefono validi');
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw fail(400, 'Email non valida');
@@ -336,10 +392,11 @@ async function api(store, req, res, url) {
         .find(({ svc, st }) => freeSlots(store, st.id, b.date, svc.minutes || 30).includes(b.time));
       if (!pick) throw fail(409, 'Orario non più disponibile, scegline un altro');
       const { svc, st } = pick;
-      const digits = phone.replace(/\D/g, '');
-      let c = store.rows('clients').find(x => (x.phone || '').replace(/\D/g, '') === digits);
+      const digits = normPhone(phone);
+      let c = store.rows('clients').find(x => normPhone(x.phone) === digits);
       if (!c) c = await store.insert('clients', { id: uid(), name, phone, email, birthday: '', notes: 'Cliente da prenotazione online', created_at: new Date().toISOString() });
       else if (email && !c.email) await store.update('clients', c.id, { email });
+      if (acc && acc.client_id !== c.id) await store.update('accounts', acc.id, { client_id: c.id });
       const code = bookingCode();
       await store.insert('appointments', {
         id: uid(), client_id: c.id, client_name: c.name, staff_id: st.id, service_id: svc.id, service_name: svc.name,
