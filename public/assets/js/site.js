@@ -254,7 +254,7 @@ function wizard() {
        <div class="bx"><h3 class="sh">I tuoi dati di contatto</h3>${accBanner()}<div id="be" class="down err"></div>
         <div class="row2"><div><label class="lb2">Nome *</label><input id="bn" autocomplete="given-name" maxlength="40" placeholder="Mario" value="${esc(ME?.name || '')}"></div><div><label class="lb2">Cognome *</label><input id="bs" autocomplete="family-name" maxlength="40" placeholder="Rossi" value="${esc(ME?.surname || '')}"></div></div>
         <label class="lb2">Numero di telefono (per conferma e promemoria) *</label><input id="bp" type="tel" autocomplete="tel" maxlength="30" placeholder="+39 340 1234567" value="${esc(ME?.phone || '')}">
-        <label class="lb2">Indirizzo email (facoltativo)</label><input id="bm" type="email" autocomplete="email" maxlength="120" placeholder="mario.rossi@example.com" value="${esc(ME?.email || '')}">
+        <label class="lb2">Indirizzo email (per la conferma) *</label><input id="bm" type="email" required autocomplete="email" maxlength="120" placeholder="mario.rossi@example.com" value="${esc(ME?.email || '')}">
         <label class="lb2">Note per l'operatore (facoltativo)</label><textarea id="bt" rows="2" maxlength="300" placeholder="Es. lunghezza desiderata, pelle sensibile…"></textarea>
         ${accCreate()}
         <button class="bt" style="width:100%;margin-top:18px" id="bgo" onclick="send()">Conferma definitiva prenotazione</button></div></div>` + backBtn(3);
@@ -316,7 +316,7 @@ const authBox = mode => `<div class="acc-tabs"><button type="button" class="${mo
        <button class="bt" type="button" style="width:100%;margin-top:14px" id="ago" onclick="doAuth('login')">Accedi</button>`
     : `<div class="row2"><div><label class="lb2">Nome *</label><input id="rn" autocomplete="given-name" maxlength="40"></div><div><label class="lb2">Cognome *</label><input id="rs" autocomplete="family-name" maxlength="40"></div></div>
        <label class="lb2">Telefono *</label><input id="rp" type="tel" autocomplete="tel" maxlength="30" placeholder="+39 340 1234567">
-       <label class="lb2">Email (facoltativa)</label><input id="rm" type="email" autocomplete="email" maxlength="120">
+       <label class="lb2">Email *</label><input id="rm" type="email" required autocomplete="email" maxlength="120">
        <label class="lb2">Password * (min. 8 caratteri)</label><input id="rw" type="password" autocomplete="new-password" maxlength="100" onkeydown="if(event.key==='Enter')doAuth('reg')">
        <label class="rem"><input type="checkbox" id="ar" checked> Resta connesso su questo dispositivo</label>
        <button class="bt" type="button" style="width:100%;margin-top:14px" id="ago" onclick="doAuth('reg')">Crea il mio account</button>`}`;
@@ -390,6 +390,7 @@ const accCreate = () => ME ? '' : `<label class="rem" style="margin-top:14px"><i
 async function send() {
   const v = id => $(id).value.trim(), err = m => { $('#bgo').disabled = false; $('#be').textContent = m; };
   $('#bgo').disabled = true; $('#be').textContent = '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v('#bm'))) return err('Inserisci un indirizzo email valido');
   const wantAcc = !ME && !!$('#bacc')?.checked, pw = $('#bpw')?.value || '';
   if (wantAcc && pw.length < 8) return err("Per creare l'account scegli una password di almeno 8 caratteri");
   const g = curGroup(), data = { name: v('#bn'), surname: v('#bs'), phone: v('#bp'), email: v('#bm') };

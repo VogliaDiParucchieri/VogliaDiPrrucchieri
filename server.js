@@ -334,7 +334,7 @@ async function api(store, req, res, url) {
     const personal = b => {
       const first = clean(b.name, 40), last = clean(b.surname, 40), phone = clean(b.phone, 30), email = clean(b.email, 120).toLowerCase();
       if (first.length < 2 || last.length < 2 || digitsOf(phone).length < 6) throw fail(400, 'Inserisci nome, cognome e telefono validi');
-      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw fail(400, 'Email non valida');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw fail(400, "Inserisci un indirizzo email valido");
       return { first, last, phone, email };
     };
     if (route === 'GET /api/account/me') {
@@ -381,7 +381,7 @@ async function api(store, req, res, url) {
     const first = clean(b.name || acc?.name, 40), last = clean(b.surname || acc?.surname, 40), phone = clean(b.phone || acc?.phone, 30), email = clean(b.email ?? acc?.email, 120).toLowerCase();
     const name = (first + ' ' + last).trim();
     if (first.length < 2 || last.length < 2 || phone.replace(/\D/g, '').length < 6) throw fail(400, 'Inserisci nome, cognome e telefono validi');
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw fail(400, 'Email non valida');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw fail(400, 'Inserisci un indirizzo email valido');
     if (!validDate(b.date) || !validTime(b.time) || !CATS.includes(b.category)) throw fail(400, 'Dati non validi');
     const horizon = new Date(); horizon.setDate(horizon.getDate() + 120);
     if (b.date < isoDate(new Date()) || b.date > isoDate(horizon)) throw fail(400, 'Data non prenotabile');
