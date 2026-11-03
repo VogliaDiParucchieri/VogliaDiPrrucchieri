@@ -224,10 +224,10 @@ function pgAppuntamenti() {
   const list = A.appts.filter(inScope);
   let body;
   if (APP.mode === 'giorno') {
-    const l = list.filter(a => a.date === APP.date).sort((a, b) => a.time.localeCompare(b.time));
+    const l = list.filter(a => a.date === APP.date && a.status !== 'cancelled');
     body = `<div class="nav2"><button class="btn sec" onclick="APP.date=addD(APP.date,-1);draw()">◀</button><b>${ldate(APP.date)}</b><button class="btn sec" onclick="APP.date=addD(APP.date,1);draw()">▶</button>
       <button class="btn sec sm" onclick="APP.date=today();draw()">Oggi</button><input type="date" value="${APP.date}" style="width:auto;margin:0" onchange="APP.date=this.value||today();draw()"></div>
-      <div class="card">${l.length ? l.map(apRow).join('') : '<div class="mu">Nessun appuntamento in questo giorno</div>'}</div>`;
+      ${dayGrid(l)}`;
   } else {
     const t = today(), l = list.filter(a => a.date >= t && a.status === 'booked').sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
     const days = [...new Set(l.map(a => a.date))];
@@ -236,6 +236,82 @@ function pgAppuntamenti() {
   return `<div class="tabs"><button class="${APP.mode === 'giorno' ? 'on' : ''}" onclick="APP.mode='giorno';draw()">Giorno</button><button class="${APP.mode === 'prossimi' ? 'on' : ''}" onclick="APP.mode='prossimi';draw()">Tutti i prossimi</button>
    <button class="btn" style="margin-left:auto" onclick="apptModal()">+ Nuovo appuntamento</button></div>${body}`;
 }
+
+/* agenda a colonne: operatori in alto, orari a sinistra, clic su uno spazio vuoto = nuovo appuntamento */
+const PPM = 1.5, COLS = ['#3b82f6', '#f59e0b', '#16a34a', '#8b5cf6', '#ef4444', '#C9366F', '#0ea5e9'];
+function gridRange(date) {
+  const h = A.shop.hours[pd(date).getDay()], step = Math.max(10, +A.shop.slot_step || 30);
+  const closed = !h || h.closed || (A.shop.closures || []).some(c => c.date === date);
+  let s = h && !h.closed ? toMin(h.open) : 8 * 60, e = h && !h.closed ? toMin(h.close) : 21 * 60;
+  A.appts.filter(a => a.date === date && a.status !== 'cancelled' && ids().includes(a.staff_id)).forEach(a => { s = Math.min(s, toMin(a.time)); e = Math.max(e, toMin(a.time) + (a.minutes || 30)); });
+  s = Math.floor(s / step) * step; e = Math.ceil(e / step) * step;
+  return { s, e, step, closed };
+}
+function dayGrid(l) {
+  const date = APP.date, R = gridRange(date), cols = A.staff.filter(s => ids().includes(s.id) && (s.active || l.some(a => a.staff_id === s.id)));
+  if (!cols.length) return '<div class="card mu">Nessun operatore da mostrare</div>';
+  const rows = (R.e - R.s) / R.step, rh = R.step * PPM, H = (R.e - R.s) * PPM, isT = date === today();
+  const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
+  const timeCol = '<div class="ag-t" style="height:' + H + 'px">' + Array.from({ length: rows }, (_, i) => { const m = R.s + i * R.step; return '<div style="height:' + rh + 'px" class="' + (m % 60 ? 'half' : '') + '">' + (m % 60 ? ':' + String(m % 60).padStart(2, '0') : fromMin(m)) + '</div>'; }).join('') + '</div>';
+  const colHtml = cols.map((s, ci) => {
+    const L = l.filter(a => a.staff_id === s.id).sort((a, b) => a.time.localeCompare(b.time) || (b.minutes || 30) - (a.minutes || 30));
+    const lanes = []; L.forEach(a => { const st = toMin(a.time); let k = lanes.findIndex(e => e <= st); if (k < 0) { k = lanes.length; lanes.push(0); } lanes[k] = st + (a.minutes || 30); a._k = k; });
+    const n = Math.max(1, lanes.length);
+    return `<div class="ag-c" style="height:${H}px;--rh:${rh}px;--col:${COLS[ci % COLS.length]}" onmousemove="gridHover(event,this)" onmouseleave="gridLeave(this)" onclick="gridClick(event,'${s.id}')">
+      <div class="ag-ghost"></div>${isT && nowMin >= R.s && nowMin <= R.e ? `<div class="ag-now" style="top:${(nowMin - R.s) * PPM}px"></div>` : ''}
+      ${L.map(a => {
+        const h = (a.minutes || 30) * PPM, top = (toMin(a.time) - R.s) * PPM;
+        return `<div class="ag-a ${a.status}" style="top:${top}px;height:${h - 2}px;left:calc(${a._k / n * 100}% + 2px);width:calc(${100 / n}% - 4px)" onclick="event.stopPropagation();apDetail('${a.id}')" title="${esc(a.service_name)}">
+         <b>${a.time}</b> ${esc(a.client_name || cname(a.client_id))}${h >= 44 ? `<small>${esc(a.service_name)}${a.source === 'online' ? ' · online' : ''}</small>` : ''}</div>`;
+      }).join('')}</div>`;
+  }).join('');
+  return `${R.closed ? '<div class="card mu" style="padding:10px 14px;margin-bottom:12px">Il negozio risulta chiuso in questo giorno, ma puoi inserire comunque appuntamenti.</div>' : ''}
+   <div class="ag-w"><div class="ag" style="grid-template-columns:54px repeat(${cols.length},minmax(150px,1fr))">
+    <div class="ag-h corner"></div>${cols.map((s, ci) => `<div class="ag-h" style="--col:${COLS[ci % COLS.length]}">${esc(s.name.split(' ')[0])}<small>${l.filter(a => a.staff_id === s.id).length} app.</small></div>`).join('')}
+    ${timeCol}${colHtml}</div></div>
+   <p class="mu" style="margin-top:8px">Clicca su uno spazio vuoto per aggiungere un appuntamento, o su un appuntamento per gestirlo.</p>`;
+}
+function gridMin(e, el) {
+  const R = gridRange(APP.date), y = e.clientY - el.getBoundingClientRect().top;
+  return Math.max(R.s, Math.min(R.e - R.step, R.s + Math.floor(y / PPM / R.step) * R.step));
+}
+function gridHover(e, el) {
+  if (e.target.closest('.ag-a')) return gridLeave(el);
+  const R = gridRange(APP.date), m = gridMin(e, el), g = el.querySelector('.ag-ghost');
+  g.style.cssText = 'display:flex;top:' + (m - R.s) * PPM + 'px;height:' + R.step * PPM + 'px'; g.textContent = '+ ' + fromMin(m);
+}
+function gridLeave(el) { el.querySelector('.ag-ghost').style.display = 'none'; }
+function gridClick(e, sid) { apptModal(null, { staff_id: sid, date: APP.date, time: fromMin(gridMin(e, e.currentTarget)) }); }
+function closeOv() { document.querySelectorAll('.ov').forEach(o => o.remove()); }
+function apDetail(id) {
+  const a = A.appts.find(x => x.id === id); if (!a) return;
+  const st = STATUS[a.status], c = cli(a.client_id);
+  modal(esc(a.client_name || cname(a.client_id)), `<div class="kv2"><span>Quando</span><b>${ldate(a.date)} · ${a.time}–${fromMin(toMin(a.time) + (a.minutes || 30))}</b></div>
+   <div class="kv2"><span>Servizio</span><b>${esc(a.service_name)}</b></div><div class="kv2"><span>Operatore</span><b>${esc(sname(a.staff_id))}</b></div>
+   ${A.emp ? '' : `<div class="kv2"><span>Prezzo</span><b>${a.from_sub ? 'abbonamento' : money(a.price)}</b></div>`}
+   ${c?.phone ? `<div class="kv2"><span>Telefono</span><b>${esc(c.phone)}</b></div>` : ''}${a.notes ? `<div class="kv2"><span>Note</span><b>${esc(a.notes)}</b></div>` : ''}
+   <div class="kv2"><span>Stato</span><b><span class="tag ${st[1]}">${st[0]}</span>${a.source === 'online' ? ' <span class="tag new">online</span>' : ''}</b></div>
+   <div class="act" style="margin-top:14px">${a.status === 'booked' ? `<button class="btn sm" onclick="closeOv();setStatus('${a.id}','done')">Completa</button><button class="btn sec sm" onclick="closeOv();setStatus('${a.id}','noshow')">No-show</button><button class="btn sec sm" onclick="closeOv();setStatus('${a.id}','cancelled')">Annulla</button>` : `<button class="btn sec sm" onclick="closeOv();setStatus('${a.id}','booked')">Riapri</button>`}
+   <button class="btn sec sm" onclick="closeOv();apptModal('${a.id}')">Modifica</button><button class="btn wa sm" onclick="waAppt('${a.id}')">WhatsApp</button><button class="btn del sm" onclick="closeOv();delAppt('${a.id}')">Elimina</button></div>`, null);
+}
+function slotsDraw() {
+  const box = $('#f_slots'); if (!box) return;
+  const st = $('#f_st').value, date = $('#f_d').value, mins = +$('#f_m').value || 30, cur = $('#f_t').value, me = box.dataset.id;
+  if (!date) { box.innerHTML = '<div class="mu">Scegli la data</div>'; return; }
+  const h = A.shop.hours[pd(date).getDay()], step = Math.max(10, +A.shop.slot_step || 30);
+  const closed = !h || h.closed || (A.shop.closures || []).some(c => c.date === date);
+  const s = closed ? 8 * 60 : toMin(h.open), e = closed ? 21 * 60 : toMin(h.close);
+  const busy = A.appts.filter(x => x.id !== me && x.staff_id === st && x.date === date && ['booked', 'done'].includes(x.status));
+  const now = new Date(), isT = date === today(), nowMin = now.getHours() * 60 + now.getMinutes();
+  let out = '';
+  for (let t = s; t + mins <= e; t += step) {
+    const hit = busy.find(x => t < toMin(x.time) + (x.minutes || 30) && t + mins > toMin(x.time));
+    const past = isT && t < nowMin;
+    out += `<button type="button" class="sl ${hit ? 'ko' : 'ok'} ${past ? 'past' : ''} ${fromMin(t) === cur ? 'on' : ''}" title="${hit ? 'Occupato: ' + esc(hit.client_name || cname(hit.client_id)) : past ? 'Orario già passato' : 'Libero'}" onclick="slotPick('${fromMin(t)}')">${fromMin(t)}</button>`;
+  }
+  box.innerHTML = (closed ? '<div class="mu" style="margin-bottom:6px">Giorno di chiusura: orari indicativi.</div>' : '') + (out ? `<div class="sls">${out}</div>` : '<div class="mu">Nessun orario disponibile per questa durata.</div>');
+}
+function slotPick(t) { $('#f_t').value = t; slotsDraw(); }
 function apptModal(id, pre = {}) {
   const a = id ? A.appts.find(x => x.id === id) : null;
   const staffId = a?.staff_id || pre.staff_id || (scope !== 'all' && scope !== 'mine' ? scope : meId());
@@ -244,10 +320,11 @@ function apptModal(id, pre = {}) {
    <input id="f_cs" placeholder="🔍 Cerca cliente…" oninput="filterClients()">
    <select id="f_cl" size="1"><option value="">— Nuovo cliente (compila sotto) —</option>${clientOpts.map(c => `<option value="${c.id}" ${(a?.client_id || pre.client_id) === c.id ? 'selected' : ''}>${esc(c.name)}${c.phone ? ' · ' + esc(c.phone) : ''}</option>`).join('')}</select>
    <div class="row" id="f_new"><input id="f_nn" placeholder="Nome nuovo cliente"><input id="f_np" placeholder="Telefono"></div>
-   <div class="row"><div><label>Operatore</label><select id="f_st" onchange="fillSvc()">${selOpts(A.staff.filter(s => s.active || s.id === staffId), staffId)}</select></div>
-   <div><label>Servizio</label><select id="f_sv" onchange="svcPicked()"></select></div></div>
-   <div class="row"><div><label>Data</label><input id="f_d" type="date" value="${a?.date || pre.date || APP.date || today()}"></div><div><label>Ora</label><input id="f_t" type="time" value="${a?.time || '09:00'}"></div>
-   <div ${A.emp ? 'class="hide"' : ''}><label>Prezzo</label><input id="f_p" type="number" min="0" step="0.5" value="${a?.price ?? 0}"></div><div><label>Minuti</label><input id="f_m" type="number" min="10" step="5" value="${a?.minutes ?? 30}"></div></div>
+   <div class="row"><div><label>Operatore</label><select id="f_st" onchange="fillSvc();slotsDraw()">${selOpts(A.staff.filter(s => s.active || s.id === staffId), staffId)}</select></div>
+   <div><label>Servizio</label><select id="f_sv" onchange="svcPicked();slotsDraw()"></select></div></div>
+   <div class="row"><div><label>Data</label><input id="f_d" type="date" value="${a?.date || pre.date || APP.date || today()}" onchange="slotsDraw()"></div><div><label>Ora</label><input id="f_t" type="time" value="${a?.time || pre.time || '09:00'}" oninput="slotsDraw()"></div>
+   <div ${A.emp ? 'class="hide"' : ''}><label>Prezzo</label><input id="f_p" type="number" min="0" step="0.5" value="${a?.price ?? 0}"></div><div><label>Minuti</label><input id="f_m" type="number" min="10" step="5" value="${a?.minutes ?? 30}" oninput="slotsDraw()"></div></div>
+   <div class="slh"><label style="margin:0">Scegli l'orario</label><span class="lgd"><i class="dot g"></i>Libero <i class="dot r"></i>Occupato</span></div><div id="f_slots" data-id="${a?.id || ''}"></div>
    <label>Note</label><input id="f_n" value="${esc(a?.notes || '')}">`;
   modal(a ? 'Modifica appuntamento' : 'Nuovo appuntamento', html, async () => {
     let cid = $('#f_cl').value;
@@ -270,7 +347,7 @@ function apptModal(id, pre = {}) {
     else await api('POST', '/api/admin/appointments', data);
     return true;
   });
-  fillSvc(a); svcPicked(true); $('#f_cl').onchange = () => $('#f_new').classList.toggle('hide', !!$('#f_cl').value);
+  fillSvc(a); svcPicked(true); slotsDraw(); $('#f_cl').onchange = () => $('#f_new').classList.toggle('hide', !!$('#f_cl').value);
   $('#f_new').classList.toggle('hide', !!$('#f_cl').value);
 }
 function filterClients() {

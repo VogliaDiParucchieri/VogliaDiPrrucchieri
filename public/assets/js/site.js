@@ -28,9 +28,17 @@ try {
     sessionStorage.setItem('intro', '1');
     const el = document.createElement('div');
     el.className = 'intro';
-    el.innerHTML = '<img src="/assets/img/logo.png" alt=""><i></i>';
+    el.innerHTML = '<b class="cu l"></b><b class="cu r"></b><div class="mk"><div class="glow"></div><img src="/assets/img/logo.png" alt=""><i></i></div>';
     document.body.append(el);
-    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 700); }, 1500);
+    document.documentElement.classList.add('introing');
+    let gone = false;
+    const end = () => {
+      if (gone) return; gone = true;
+      el.classList.add('out');
+      setTimeout(() => { el.remove(); document.documentElement.classList.remove('introing'); }, 1100);
+    };
+    el.addEventListener('click', end);
+    setTimeout(end, 2300);
   }
 } catch { }
 document.addEventListener('click', e => {
@@ -101,7 +109,7 @@ function home() {
     <div class="eb">${esc(s.city)}</div>
     <h1>Voglia di<br><em>sentirti</em> al meglio.</h1>
     <p>Parrucchieri per donna e uomo, estetica e nail art in un unico posto. Scegli il servizio, il giorno e l'orario: prenoti in pochi secondi.</p>
-    <a class="bt" href="/prenota">Prenota ora</a> <a class="bt o" href="/servizi">Scopri i servizi</a></div><div class="pole"></div></div></section>
+    <a class="bt" href="/prenota">Prenota ora</a> <a class="bt o" href="/servizi">Scopri i servizi</a></div><div class="hero-ph"><div class="frame"><img src="/assets/img/team.jpg" alt="Enrico e Grazia, il team di ${esc(s.name)}" fetchpriority="high"></div><span class="badge">Enrico &amp; Grazia</span></div></div></section>
   <div class="perks"><div><b>Prenotazione online</b><span>Orari sempre aggiornati, 24 ore su 24</span></div>
     <div><b>Professioniste e professionisti</b><span>Hair stylist ed estetiste qualificate</span></div><div><b>Capelli · Unghie · Estetica</b><span>Tutto il benessere in un unico posto</span></div></div>
   <section class="sec"><div class="wrap ctr"><div class="eb">Listino</div><h2 class="title">I nostri servizi</h2>
