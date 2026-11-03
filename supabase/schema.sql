@@ -71,6 +71,16 @@ create table if not exists subscriptions (
   created_at timestamptz default now()
 );
 
+create table if not exists purchases (   -- acquisti in negozio (prodotti)
+  id text primary key,
+  client_id text not null,
+  staff_id text default '',
+  date text not null,
+  product text not null,
+  price numeric default 0,
+  created_at timestamptz default now()
+);
+
 create table if not exists gallery (
   id text primary key,
   url text not null,
@@ -105,6 +115,7 @@ alter table services enable row level security;
 alter table clients enable row level security;
 alter table appointments enable row level security;
 alter table subscriptions enable row level security;
+alter table purchases enable row level security;
 alter table gallery enable row level security;
 alter table settings enable row level security;
 alter table admins enable row level security;

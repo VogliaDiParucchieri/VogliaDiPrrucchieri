@@ -45,7 +45,7 @@ async function api(method, url, body) {
 }
 async function load() {
   const d = await api('GET', '/api/admin/bootstrap');
-  A = { me: d.me, emp: d.me.role === 'dipendente', owner: d.me.role === 'owner', shop: d.shop, staff: d.staff, services: d.services, clients: d.clients, appts: d.appointments, subs: d.subscriptions, gallery: d.gallery, status: d.status };
+  A = { me: d.me, emp: d.me.role === 'dipendente', owner: d.me.role === 'owner', shop: d.shop, staff: d.staff, services: d.services, clients: d.clients, appts: d.appointments, subs: d.subscriptions, purchases: d.purchases || [], gallery: d.gallery, status: d.status };
 }
 // esegue un'azione, ricarica i dati e ridisegna
 async function act(fn) {
@@ -79,6 +79,7 @@ function txs(idl = ids(), withLoose = scope === 'all') {
   const t = [];
   A.appts.filter(a => a.status === 'done' && idl.includes(a.staff_id)).forEach(a => t.push({ d: a.date, a: +a.price, staff: a.staff_id, boss: bossOf(a.staff_id), cat: a.category, label: a.service_name, client: a.client_name || cname(a.client_id), kind: 'servizio' }));
   A.subs.filter(s => idl.includes(s.staff_id) || (!s.staff_id && withLoose)).forEach(s => t.push({ d: s.start_date, a: +s.price, staff: s.staff_id, boss: bossOf(s.staff_id), cat: 'abbonamento', label: 'Abbonamento', client: cname(s.client_id), kind: 'abbonamento' }));
+  (A.purchases || []).filter(p => idl.includes(p.staff_id) || (!p.staff_id && withLoose)).forEach(p => t.push({ d: p.date, a: +p.price, staff: p.staff_id, boss: bossOf(p.staff_id), cat: 'prodotto', label: p.product, client: cname(p.client_id), kind: 'prodotto' }));
   return t;
 }
 // incassi di ogni titolare (con il proprio team): Enrico e Grazia sempre distinti
@@ -134,7 +135,7 @@ function barChart(items, h = 200) {
 function breakdown(T, f, t) {
   const L = T.filter(x => x.d >= f && x.d <= t), tot = L.reduce((s, x) => s + x.a, 0) || 1;
   const by = (key, name) => { const m = {}; L.forEach(x => m[x[key]] = (m[x[key]] || 0) + x.a); return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div style="margin:8px 0"><div style="display:flex;justify-content:space-between"><span>${esc(name(k))}</span><b>${money(v)}</b></div><div class="bar"><i style="width:${v / tot * 100}%"></i></div></div>`).join('') || '<div class="mu">—</div>'; };
-  return { op: by('staff', k => k ? sname(k) : 'Altro'), cat: by('cat', k => CATS[k] || 'Abbonamenti'), n: L.length };
+  return { op: by('staff', k => k ? sname(k) : 'Altro'), cat: by('cat', k => CATS[k] || (k === 'prodotto' ? 'Prodotti' : 'Abbonamenti')), n: L.length };
 }
 
 /* ---------- shell ---------- */
@@ -412,13 +413,12 @@ function clientForm(c) {
 }
 function clientDetail(c) {
   const s = activeSub(c.id), hist = A.appts.filter(a => a.client_id === c.id).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
-  const subs = A.subs.filter(x => x.client_id === c.id), spent = hist.filter(a => a.status === 'done').reduce((t, a) => t + +a.price, 0) + subs.reduce((t, x) => t + +x.price, 0);
+  const subs = A.subs.filter(x => x.client_id === c.id), spent = hist.filter(a => a.status === 'done').reduce((t, a) => t + +a.price, 0) + subs.reduce((t, x) => t + +x.price, 0) + A.purchases.filter(p => p.client_id === c.id).reduce((t, p) => t + +p.price, 0);
   return clientForm(c) + `<div class="card"><h2>🎟️ Abbonamento</h2>
    ${s ? `<b>${s.total - s.uses.length}</b> utilizzi rimasti su ${s.total} · acquistato il ${fdate(s.start_date)} <button class="btn sm" onclick="useSub('${s.id}')">Segna utilizzo</button>`
       : `<div class="mu" style="margin-bottom:8px">Nessun abbonamento attivo</div><button class="btn" onclick="sellSub('${c.id}')">Vendi abbonamento ${money(A.shop.subPrice)}</button>`}
    ${subs.length ? '<h3>Date di utilizzo</h3>' + subs.map(x => `<div class="mu">Acquisto ${fdate(x.start_date)} (${money(x.price)}): ${x.uses.length ? x.uses.map(fdate).join(', ') : 'nessun utilizzo'}</div>`).join('') : ''}</div>
-  <div class="card"><h2>Storico <span class="mu">Speso in totale: ${money(spent)}</span></h2>
-   ${hist.length ? hist.map(a => `<div class="item"><div>${fdate(a.date)} ${a.time} · ${esc(a.service_name)} <span class="mu">con ${esc(sname(a.staff_id))}</span></div><div>${a.from_sub ? 'abb.' : money(a.price)} <span class="tag ${STATUS[a.status][1]}">${STATUS[a.status][0]}</span></div></div>`).join('') : '<div class="mu">Nessun appuntamento</div>'}
+  <div class="card"><h2>Storico <span class="mu">Speso in totale: ${money(spent)}</span></h2>${histBody(c, true)}
    <button class="btn sec" style="margin-top:10px" onclick="apptModal(null,{client_id:'${c.id}'})">+ Nuovo appuntamento per ${esc(c.name.split(' ')[0])}</button></div>`;
 }
 function saveClient(id) {
@@ -507,7 +507,7 @@ function pgStoricoIncassi() {
   return `<div class="card"><div class="row">
    <div><label>Periodo</label><select onchange="H.range=this.value;draw()">${[['30', 'Ultimi 30 giorni'], ['90', 'Ultimi 90 giorni'], ['365', 'Ultimi 12 mesi'], ['all', 'Tutto lo storico']].map(([v, l]) => `<option value="${v}" ${H.range === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
    <div><label>Raggruppa per</label><select onchange="H.gran=this.value;draw()">${[['giorno', 'Giorno'], ['settimana', 'Settimana'], ['mese', 'Mese']].map(([v, l]) => `<option value="${v}" ${H.gran === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-   <div><label>Categoria</label><select onchange="H.cat=this.value;draw()"><option value="">Tutte</option>${Object.entries({ ...CATS, abbonamento: 'Abbonamenti' }).map(([k, l]) => `<option value="${k}" ${H.cat === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+   <div><label>Categoria</label><select onchange="H.cat=this.value;draw()"><option value="">Tutte</option>${Object.entries({ ...CATS, abbonamento: 'Abbonamenti', prodotto: 'Prodotti' }).map(([k, l]) => `<option value="${k}" ${H.cat === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
    <div><label>Cerca cliente / servizio</label><input id="hq" value="${esc(H.q)}" oninput="H.q=this.value;redrawKeep('hq')"></div></div></div>
   <div class="grid" style="margin-bottom:18px"><div class="card stat" style="margin:0"><div class="l">Totale · ${esc(scopeLabel())}</div><div class="v">${money(tot)}</div><div class="mu">${T.length} operazioni</div></div>
    <div class="card stat" style="margin:0"><div class="l">Media per operazione</div><div class="v">${money(T.length ? tot / T.length : 0)}</div></div>
@@ -528,6 +528,29 @@ function exportCsv() {
 const HC = { q: '', cid: '' };
 const histTabs = () => `<div class="tabs"><button class="${H.view !== 'cliente' ? 'on' : ''}" onclick="H.view='incassi';draw()">📈 Storico incassi</button><button class="${H.view === 'cliente' ? 'on' : ''}" onclick="H.view='cliente';draw()">👤 Storico del cliente</button></div>`;
 function pgStorico() { return histTabs() + (H.view === 'cliente' ? pgStoricoCliente() : pgStoricoIncassi()); }
+/* storico del cliente (condiviso da Clienti e Storico): appuntamenti con colore + acquisti in negozio */
+function histBody(c, all) {
+  const hist = A.appts.filter(a => a.client_id === c.id && (all || a.status !== 'cancelled')).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+  const buys = A.purchases.filter(p => p.client_id === c.id).sort((a, b) => b.date.localeCompare(a.date));
+  return `<div style="margin-bottom:6px"><button class="btn sec sm" onclick="shopModal('${c.id}')">🛍️ Acquisto in negozio</button></div>
+   ${hist.length ? hist.map(a => `<div class="item"><div><b>${fdate(a.date)} ${a.time}</b> · ${esc(a.service_name)} con ${esc(sname(a.staff_id))}${a.color ? `, <span class="colr">colore ${esc(colorTxt(a.color))}</span>` : ''}<br>
+     <span class="tag ${STATUS[a.status][1]}">${STATUS[a.status][0]}</span> <span class="mu">${a.from_sub ? 'abbonamento' : money(a.price)}${a.notes ? ' · 📝 ' + esc(a.notes) : ''}</span></div>
+     <div class="act"><button class="btn sec sm" onclick="colorModal('${a.id}')">🎨 ${a.color ? 'Modifica colore' : 'Colore'}</button></div></div>`).join('') : '<div class="mu">Nessun appuntamento</div>'}
+   ${buys.length ? '<h3>Acquisti in negozio</h3>' + buys.map(p => `<div class="item"><div><b>${fdate(p.date)}</b> · 🛍️ ${esc(p.product)}</div><div><b>${money(p.price)}</b> <button class="btn del sm" onclick="delPurchase('${p.id}')">✕</button></div></div>`).join('') : ''}`;
+}
+function shopModal(cid) {
+  const c = cli(cid);
+  modal('Acquisto in negozio · ' + esc(c.name), `<label>Prodotto acquistato</label><input id="f_pn" maxlength="120" placeholder="Es. Shampoo ristrutturante 250 ml"><div class="row"><div><label>Prezzo</label><input id="f_pp" type="number" min="0" step="0.5" placeholder="0"></div><div><label>Data</label><input id="f_pd" type="date" value="${today()}"></div></div>`,
+    async () => {
+      const product = $('#f_pn').value.trim(), price = $('#f_pp').value, date = $('#f_pd').value;
+      if (!product) throw new Error('Scrivi il nome del prodotto');
+      if (price === '' || +price < 0) throw new Error('Inserisci il prezzo');
+      await api('POST', '/api/admin/purchases', { client_id: cid, staff_id: meId(), date, product, price: +price });
+      toast('Acquisto registrato'); return true;
+    }, 'Registra');
+  setTimeout(() => $('#f_pn')?.focus(), 50);
+}
+function delPurchase(id) { if (confirm("Eliminare l'acquisto? Verrà tolto anche dagli incassi.")) act(() => api('DELETE', '/api/admin/purchases/' + id)); }
 const colorTxt = c => String(c || '').trim().replace(/^colore\s*[:\-]?\s*/i, '');
 function histMatches() {
   const q = HC.q.trim().toLowerCase(), digits = q.replace(/\D/g, '');
@@ -540,14 +563,12 @@ function pgStoricoCliente() {
   let body = '';
   if (c) {
     const hist = A.appts.filter(a => a.client_id === c.id && a.status !== 'cancelled').sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
-    const spent = hist.filter(a => a.status === 'done').reduce((t, a) => t + +a.price, 0);
+    const spent = hist.filter(a => a.status === 'done').reduce((t, a) => t + +a.price, 0) + A.purchases.filter(p => p.client_id === c.id).reduce((t, p) => t + +p.price, 0);
     body = `<div class="card"><h2><span>${esc(c.name)} <span class="mu">${esc(c.phone || '')}</span></span><button class="btn sec sm" onclick="HC.cid='';HC.q='';draw()">← Cambia cliente</button></h2>
       <div class="grid" style="margin-bottom:6px"><div class="stat"><div class="l">Appuntamenti</div><div class="v">${hist.length}</div></div>
       ${A.emp ? '' : `<div class="stat"><div class="l">Speso in totale</div><div class="v">${money(spent)}</div></div>`}
       <div class="stat"><div class="l">Ultima visita</div><div class="v" style="font-size:22px">${hist.find(a => a.status === 'done') ? fdate(hist.find(a => a.status === 'done').date) : '—'}</div></div></div></div>
-     <div class="card"><h2>Appuntamenti e colori</h2>${hist.length ? hist.map(a => `<div class="item"><div><b>${fdate(a.date)} ${a.time}</b> · ${esc(a.service_name)} con ${esc(sname(a.staff_id))}${a.color ? `, <span class="colr">colore ${esc(colorTxt(a.color))}</span>` : ''}<br>
-       <span class="tag ${STATUS[a.status][1]}">${STATUS[a.status][0]}</span> <span class="mu">${a.from_sub ? 'abbonamento' : money(a.price)}${a.notes ? ' · 📝 ' + esc(a.notes) : ''}</span></div>
-       <div class="act"><button class="btn sec sm" onclick="colorModal('${a.id}')">🎨 ${a.color ? 'Modifica colore' : 'Colore'}</button></div></div>`).join('') : '<div class="mu">Nessun appuntamento per questo cliente</div>'}</div>`;
+     <div class="card"><h2>Appuntamenti, colori e acquisti</h2>${histBody(c)}</div>`;
   } else {
     body = `<div class="card"><h2>Scegli il cliente</h2><input id="hcq" value="${esc(HC.q)}" placeholder="🔍 Cerca per nome, telefono o email…" autocomplete="off" oninput="HC.q=this.value;redrawKeep('hcq')">
       ${m.length ? m.map(x => `<div class="item pick" onclick="HC.cid='${x.id}';draw()"><span><b>${esc(x.name)}</b> <span class="mu">${esc(x.phone || '')} ${esc(x.email || '')}</span></span><span class="mu">${A.appts.filter(a => a.client_id === x.id && a.status !== 'cancelled').length} appuntamenti →</span></div>`).join('') : '<div class="mu" style="padding:8px 0">Nessun cliente trovato.</div>'}

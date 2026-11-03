@@ -150,9 +150,10 @@ const FIELDS = {
     date: 'd', time: 't', status: 'status', notes: 's:1000', seen: 'b', from_sub: 'b', wa_sent: 'b', reminder_email_sent: 'b', color: 's:300',
   },
   subscriptions: { client_id: 's:40', staff_id: 's:40', start_date: 'd', price: 'n', total: 'n', uses: 'a' },
+  purchases: { client_id: 's:40', staff_id: 's:40', date: 'd', product: 's:120', price: 'n' },
   gallery: { url: 's:300', caption: 's:120', sort: 'n' },
 };
-const REQUIRED = { staff: ['name'], services: ['staff_id', 'category', 'name'], clients: ['name'], appointments: ['staff_id', 'date', 'time'], subscriptions: ['client_id', 'start_date'], gallery: ['url'] };
+const REQUIRED = { staff: ['name'], services: ['staff_id', 'category', 'name'], clients: ['name'], appointments: ['staff_id', 'date', 'time'], subscriptions: ['client_id', 'start_date'], purchases: ['client_id', 'date', 'product'], gallery: ['url'] };
 function coerce(type, v) {
   const [t, len] = type.split(':');
   if (t === 's') return clean(v, +len);
@@ -230,7 +231,7 @@ function bootstrapFor(store, admin, shop, env) {
   if (r === 'dipendente') {
     const { subPrice, subUses, ...lite } = shop;
     return {
-      ...base, shop: lite, subscriptions: [], gallery: [],
+      ...base, shop: lite, subscriptions: [], purchases: [], gallery: [],
       services: base.services.map(({ price, ...v }) => v),
       appointments: base.appointments.map(({ price, ...a }) => a),
       clients: store.rows('clients').map(({ id, name, phone, email, birthday }) => ({ id, name, phone, email, birthday, notes: '' })),
@@ -240,6 +241,7 @@ function bootstrapFor(store, admin, shop, env) {
   return {
     ...base, shop, clients: store.rows('clients'),
     subscriptions: store.rows('subscriptions').filter(x => ids.includes(x.staff_id) || (r === 'owner' && !x.staff_id)),
+    purchases: store.rows('purchases').filter(x => ids.includes(x.staff_id) || (r === 'owner' && !x.staff_id)),
     gallery: [...store.rows('gallery')].sort((a, b) => a.sort - b.sort),
     status: { supabase: store.isSupabase, storage: store.adapter, resend: !!env.RESEND_API_KEY, from: env.RESEND_FROM || '' },
   };
@@ -251,7 +253,7 @@ function authorize(store, admin, table, method, id, row) {
   const ids = teamIds(store, admin), existing = id ? store.get(table, id) : null;
   const inTeam = sid => { if (!ids.includes(sid)) throw forbid(); };
   if (r === 'dipendente' && !(table === 'appointments' || (table === 'clients' && method === 'POST'))) throw forbid();
-  if (['appointments', 'subscriptions', 'services'].includes(table)) {
+  if (['appointments', 'subscriptions', 'services', 'purchases'].includes(table)) {
     if (existing) inTeam(existing.staff_id);
     if (row.staff_id !== undefined) inTeam(row.staff_id);
   }
@@ -456,7 +458,7 @@ async function api(store, req, res, url) {
       const row = pick(table, await readBody(req));
       if (role === 'dipendente' && table === 'appointments') row.staff_id = admin.staff_id;
       if (table === 'staff') { if (role === 'titolare') row.boss_id = admin.staff_id; row.is_owner = false; }
-      if (table === 'subscriptions' && role !== 'owner' && row.staff_id === undefined) row.staff_id = admin.staff_id;
+      if ((table === 'subscriptions' || table === 'purchases') && role !== 'owner' && row.staff_id === undefined) row.staff_id = admin.staff_id;
       for (const k of REQUIRED[table]) if (row[k] === undefined || row[k] === '') throw fail(400, 'Campo mancante: ' + k);
       authorize(store, admin, table, 'POST', null, row);
       const defaults = {
@@ -465,6 +467,7 @@ async function api(store, req, res, url) {
         clients: { phone: '', email: '', birthday: '', notes: '' },
         appointments: { client_id: '', client_name: '', service_id: '', service_name: '', category: 'uomo', price: 0, minutes: 30, status: 'booked', source: 'admin', notes: '', seen: true, from_sub: false, wa_sent: false, reminder_email_sent: false, booking_code: '' },
         subscriptions: { staff_id: '', price: 0, total: 4, uses: [] },
+        purchases: { staff_id: '', price: 0 },
         gallery: { caption: '', sort: store.rows('gallery').length + 1 },
       }[table];
       const full = { id: uid(), ...defaults, ...row, created_at: new Date().toISOString() };
