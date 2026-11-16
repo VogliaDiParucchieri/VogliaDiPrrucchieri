@@ -47,6 +47,16 @@ const SEED_SHOP = {
   bd_template: 'Ciao {nome}, tanti auguri di buon compleanno! 🎂 Il team di {negozio}',
 };
 
+// copia il listino del titolare a un dipendente (così si può prenotare subito con lui)
+async function copyServices(store, fromId, toId) {
+  const have = new Set(store.rows('services').filter(v => v.staff_id === toId).map(v => v.category + '|' + v.name.trim().toLowerCase()));
+  for (const v of store.rows('services').filter(x => x.staff_id === fromId)) {
+    if (have.has(v.category + '|' + v.name.trim().toLowerCase())) continue;
+    const row = { id: uid(), staff_id: toId, category: v.category, name: v.name, price: v.price, minutes: v.minutes, active: v.active };
+    if (v.price_max) row.price_max = v.price_max;
+    await store.insert('services', row);
+  }
+}
 async function seed(store) {
   if (!store.get('settings', 'shop')) await store.insert('settings', { id: 'shop', value: SEED_SHOP });
   if (!store.rows('staff').length) {
@@ -61,6 +71,12 @@ async function seed(store) {
   for (const t of SEED_STAFF) {
     const row = store.get('staff', t.id);
     if (row && t.boss_id && !row.is_owner && !row.boss_id) await store.update('staff', t.id, { boss_id: t.boss_id });
+  }
+  // una tantum: i dipendenti già creati senza listino ricevono quello del loro titolare
+  if (!store.get('settings', 'mig_staff_services')) {
+    for (const st of store.rows('staff').filter(x => x.boss_id && !store.rows('services').some(v => v.staff_id === x.id)))
+      await copyServices(store, st.boss_id, st.id);
+    await store.insert('settings', { id: 'mig_staff_services', value: { done: true } });
   }
   const cur = store.get('settings', 'shop');
   if (cur && cur.value.currency === '$') await store.update('settings', 'shop', { value: { ...cur.value, currency: '€' } });
@@ -165,11 +181,11 @@ const ccookie = (v, age) => `cid=${v}; HttpOnly; SameSite=Lax; Path=/${v === '' 
 /* ---------- campi consentiti per tabella ---------- */
 const FIELDS = {
   staff: { name: 's:60', role: 's:80', bio: 's:400', photo: 's:300', active: 'b', sort: 'n', boss_id: 's:40' },
-  services: { staff_id: 's:40', category: 'c', name: 's:80', price: 'n', minutes: 'n', active: 'b' },
+  services: { staff_id: 's:40', category: 'c', name: 's:80', price: 'n', price_max: 'n', minutes: 'n', active: 'b' },
   clients: { name: 's:80', phone: 's:30', email: 's:120', birthday: 'd?', notes: 's:2000' },
   appointments: {
     client_id: 's:40', client_name: 's:80', staff_id: 's:40', service_id: 's:40', service_name: 's:80', category: 'c', price: 'n', minutes: 'n',
-    date: 'd', time: 't', status: 'status', notes: 's:1000', seen: 'b', from_sub: 'b', wa_sent: 'b', reminder_email_sent: 'b', color: 's:300',
+    date: 'd', time: 't', status: 'status', notes: 's:1000', seen: 'b', from_sub: 'b', wa_sent: 'b', reminder_email_sent: 'b', color: 's:1200',
   },
   subscriptions: { client_id: 's:40', staff_id: 's:40', start_date: 'd', price: 'n', total: 'n', uses: 'a' },
   purchases: { client_id: 's:40', staff_id: 's:40', date: 'd', product: 's:120', price: 'n' },
@@ -194,6 +210,18 @@ function pick(table, data) {
   return out;
 }
 
+/* ---------- assenze / orari bloccati (per operatore, da giorno a giorno, anche solo da un'ora a un'altra) ---------- */
+const blocksOf = store => (store.get('settings', 'blocks')?.value.list) || [];
+async function saveBlocks(store, list) {
+  if (store.get('settings', 'blocks')) await store.update('settings', 'blocks', { value: { list } });
+  else await store.insert('settings', { id: 'blocks', value: { list } });
+}
+// intervalli bloccati [inizio, fine] in minuti per un operatore in una data
+function blockedRanges(store, staffId, date) {
+  return blocksOf(store).filter(b => b.staff_id === staffId && b.from_date <= date && date <= b.to_date)
+    .map(b => b.from_time && b.to_time ? [toMin(b.from_time), toMin(b.to_time)] : [0, 1440]);
+}
+
 /* ---------- disponibilità ---------- */
 // tutti gli orari del giorno per un operatore, con stato (ok = prenotabile)
 function allSlots(store, staffId, date, minutes) {
@@ -205,11 +233,13 @@ function allSlots(store, staffId, date, minutes) {
   const busy = store.rows('appointments')
     .filter(a => a.staff_id === staffId && a.date === date && (a.status === 'booked' || a.status === 'done'))
     .map(a => [toMin(a.time), toMin(a.time) + (a.minutes || 30)]);
+  const off = blockedRanges(store, staffId, date);
   const now = new Date(), isToday = date === isoDate(now), nowMin = now.getHours() * 60 + now.getMinutes();
   const step = Math.max(10, +shop.slot_step || 30), out = [];
   for (let t = toMin(h.open); t + minutes <= toMin(h.close); t += step) {
     let ok = true, reason = '';
     if (isToday && t < nowMin + 15) { ok = false; reason = 'passato'; }
+    else if (off.some(([s, e]) => t < e && t + minutes > s)) { ok = false; reason = 'non disponibile'; }
     else if (busy.some(([s, e]) => t < e && t + minutes > s)) { ok = false; reason = 'occupato'; }
     out.push({ time: fromMin(t), ok, reason });
   }
@@ -224,7 +254,7 @@ function eligible(store, cat, name, staffId) {
     .filter(v => v.active && v.category === cat && v.name.trim().toLowerCase() === n && (staffId === 'any' || v.staff_id === staffId))
     .map(v => ({ svc: v, st: store.get('staff', v.staff_id) }))
     .filter(x => x.st && x.st.active)
-    .sort((a, b) => a.st.sort - b.st.sort);
+    .sort((a, b) => (b.st.is_owner ? 1 : 0) - (a.st.is_owner ? 1 : 0) || a.st.sort - b.st.sort);
 }
 const bookingCode = () => Array.from(crypto.randomBytes(6), b => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('');
 
@@ -249,6 +279,7 @@ function bootstrapFor(store, admin, shop, env) {
     me: { username: admin.username, staff_id: admin.staff_id, role: r },
     staff, services: store.rows('services').filter(v => ids.includes(v.staff_id)),
     appointments: store.rows('appointments').filter(a => ids.includes(a.staff_id)),
+    blocks: blocksOf(store).filter(b => ids.includes(b.staff_id)),
   };
   if (r === 'dipendente') {
     const { subPrice, subUses, ...lite } = shop;
@@ -322,7 +353,8 @@ async function api(store, req, res, url) {
       shop: pub,
       staff: staff.map(({ id, name, role, bio, photo, is_owner }) => ({ id, name, role, bio, photo, is_owner })),
       services: store.rows('services').filter(s => s.active && staff.some(t => t.id === s.staff_id))
-        .map(({ id, staff_id, category, name, price, minutes }) => ({ id, staff_id, category, name, price, minutes })),
+        .sort((a, b) => { const x = staff.findIndex(t => t.id === a.staff_id), y = staff.findIndex(t => t.id === b.staff_id); return ((staff[x].is_owner ? 0 : 1) - (staff[y].is_owner ? 0 : 1)) || x - y; })
+        .map(({ id, staff_id, category, name, price, price_max, minutes }) => ({ id, staff_id, category, name, price, price_max: +price_max > +price ? +price_max : 0, minutes })),
       gallery: [...store.rows('gallery')].sort((a, b) => a.sort - b.sort || (a.created_at || '').localeCompare(b.created_at || '')).map(({ id, url, caption }) => ({ id, url, caption })),
     }, { 'Cache-Control': 'public, max-age=0, s-maxage=30, stale-while-revalidate=300' });
   }
@@ -359,7 +391,8 @@ async function api(store, req, res, url) {
       const appointments = store.rows('appointments').filter(x => x.client_id === a.client_id && x.status !== 'cancelled')
         .sort((x, y) => (y.date + y.time).localeCompare(x.date + x.time)).slice(0, 40)
         .map(x => ({ id: x.id, date: x.date, time: x.time, minutes: x.minutes || 30, service_name: x.service_name, status: x.status, staff: store.get('staff', x.staff_id)?.name || '', code: x.booking_code || '' }));
-      return json(res, 200, { account: view(a), appointments });
+      const sub = store.rows('subscriptions').filter(x => x.client_id === a.client_id && x.uses.length < x.total).sort((x, y) => y.start_date.localeCompare(x.start_date))[0];
+      return json(res, 200, { account: view(a), appointments, sub: sub ? { total: sub.total, used: sub.uses.length, left: sub.total - sub.uses.length, start: sub.start_date } : null });
     }
     if (route === 'POST /api/account/register') {
       if (limited(ip, 'acc-reg', 6, 3600e3)) throw fail(429, 'Troppe richieste, riprova più tardi');
@@ -437,6 +470,13 @@ async function api(store, req, res, url) {
       const { svc, st } = pick;
       const digits = normPhone(phone);
       let c = store.rows('clients').find(x => normPhone(x.phone) === digits);
+      // lo stesso servizio non si può prenotare più volte nella stessa settimana (servizi diversi sì)
+      if (c) {
+        const wk = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return isoDate(x); };
+        const key = svc.category + '|' + svc.name.trim().toLowerCase();
+        if (store.rows('appointments').some(x => x.client_id === c.id && ['booked', 'done'].includes(x.status) && x.category + '|' + String(x.service_name).trim().toLowerCase() === key && wk(x.date) === wk(b.date)))
+          throw fail(422, 'Hai già prenotato "' + svc.name + '" in questa settimana. Lo stesso servizio si può prenotare una sola volta a settimana: scegli un altro servizio oppure un’altra settimana.');
+      }
       if (!c) c = await store.insert('clients', { id: uid(), name, phone, email, birthday: '', notes: 'Cliente da prenotazione online', created_at: new Date().toISOString() });
       else if (email && !c.email) await store.update('clients', c.id, { email });
       if (acc && acc.client_id !== c.id) await store.update('accounts', acc.id, { client_id: c.id });
@@ -551,12 +591,32 @@ async function api(store, req, res, url) {
     return json(res, 200, { ok: true });
   }
 
+  // assenze / orari bloccati (titolari e owner)
+  if (route === 'POST /api/admin/blocks') {
+    const b = await readBody(req);
+    if (!store.get('staff', b.staff_id)) throw fail(400, 'Scegli la persona');
+    if (!teamIds(store, admin).includes(b.staff_id)) throw forbid();
+    if (!validDate(b.from_date) || !validDate(b.to_date) || b.to_date < b.from_date) throw fail(400, 'Date non valide');
+    const part = !!(b.from_time || b.to_time);
+    if (part && (!validTime(b.from_time) || !validTime(b.to_time) || toMin(b.to_time) <= toMin(b.from_time))) throw fail(400, 'Orari non validi: l’ora di fine deve essere dopo quella di inizio');
+    const row = { id: uid(), staff_id: b.staff_id, from_date: b.from_date, to_date: b.to_date, from_time: part ? b.from_time : '', to_time: part ? b.to_time : '', label: clean(b.label, 80) };
+    return store.lock(async () => { await saveBlocks(store, [...blocksOf(store), row]); return json(res, 200, { row }); });
+  }
+  const bm = /^DELETE \/api\/admin\/blocks\/([\w-]+)$/.exec(route);
+  if (bm) {
+    const cur = blocksOf(store).find(x => x.id === bm[1]);
+    if (!cur) throw fail(404, 'Non trovato');
+    if (!teamIds(store, admin).includes(cur.staff_id)) throw forbid();
+    return store.lock(async () => { await saveBlocks(store, blocksOf(store).filter(x => x.id !== bm[1])); return json(res, 200, { ok: true }); });
+  }
+
   // CRUD generico
   const m = /^\/api\/admin\/(\w+)(?:\/([\w-]+))?$/.exec(url.pathname);
   if (m && FIELDS[m[1]]) {
     const table = m[1], id = m[2];
     if (req.method === 'POST' && !id) {
       const row = pick(table, await readBody(req));
+      if (table === 'services' && !row.price_max) delete row.price_max; // senza prezzo massimo non tocca la colonna
       if (role === 'dipendente' && table === 'appointments') row.staff_id = admin.staff_id;
       if (table === 'staff') { if (role === 'titolare') row.boss_id = admin.staff_id; row.is_owner = false; }
       if ((table === 'subscriptions' || table === 'purchases') && role !== 'owner' && row.staff_id === undefined) row.staff_id = admin.staff_id;
@@ -575,11 +635,13 @@ async function api(store, req, res, url) {
       if (table === 'appointments' && role === 'dipendente') { delete row.price; full.price = store.get('services', full.service_id)?.price || 0; full.from_sub = false; }
       if (table === 'appointments' && full.client_id) full.client_name = store.get('clients', full.client_id)?.name || full.client_name;
       await store.insert(table, full);
+      if (table === 'staff' && full.boss_id) await copyServices(store, full.boss_id, full.id);
       return json(res, 200, { row: role === 'dipendente' ? { ...full, price: undefined } : full });
     }
     if (req.method === 'PATCH' && id) {
       const patch = pick(table, await readBody(req));
       if (!store.get(table, id)) throw fail(404, 'Non trovato');
+      if (table === 'services' && patch.price_max === 0 && !store.get(table, id).price_max) delete patch.price_max;
       if (table === 'staff' && role !== 'owner') delete patch.boss_id;
       if (role === 'dipendente') {
         delete patch.price; delete patch.from_sub;

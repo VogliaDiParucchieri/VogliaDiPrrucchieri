@@ -135,3 +135,6 @@ alter table admins enable row level security;
 -- Bucket per le foto della galleria e del team (pubblico in lettura):
 insert into storage.buckets (id, name, public) values ('media', 'media', true)
 on conflict (id) do nothing;
+
+-- Prezzo massimo facoltativo ("da 100 a 150"): serve solo se usi il campo "Fino a" nei servizi
+alter table services add column if not exists price_max numeric default 0;

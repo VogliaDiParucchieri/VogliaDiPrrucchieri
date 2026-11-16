@@ -125,7 +125,7 @@ input,select,textarea{width:100%;padding:13px;border:1px solid var(--bd);backgro
 
 /* footer */
 .ft{background:#111;color:#bdb6aa;padding:56px 0 30px;font-size:14px}
-.ft .flogo{height:110px;width:auto;margin-bottom:14px}.ft .g{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:36px;margin-bottom:36px}
+.ft .flogo{height:80px;width:auto;margin-bottom:14px}.ft .g{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:36px;margin-bottom:36px}
 .ft h4{color:#fff;font:600 11px Inter;letter-spacing:3px;text-transform:uppercase;margin-bottom:14px}
 .ft a{display:block;text-decoration:none;margin:6px 0}.ft a:hover{color:#fff}
 .ft .c{border-top:1px solid #2a2a2a;padding-top:22px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px}
@@ -143,7 +143,7 @@ html.introing{overflow:hidden}
 .intro .mk{position:relative;display:flex;flex-direction:column;align-items:center;gap:22px;transition:opacity .5s ease,transform .8s cubic-bezier(.76,0,.24,1)}
 .intro.out .mk{opacity:0;transform:scale(1.08)}
 .intro .glow{position:absolute;left:50%;top:42%;width:150%;aspect-ratio:1;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(201,54,111,.38),rgba(120,90,200,.12) 40%,transparent 68%);opacity:0;animation:introGlow 1.6s .1s ease-out forwards;pointer-events:none}
-.intro img{position:relative;width:min(78vw,520px);height:auto;opacity:0;animation:introLogo 1.3s .15s cubic-bezier(.2,.7,.2,1) forwards}
+.intro img{position:relative;width:auto;max-width:84vw;max-height:66vh;opacity:0;animation:introLogo 1.3s .15s cubic-bezier(.2,.7,.2,1) forwards}
 .intro i{position:relative;display:block;width:0;height:2px;background:linear-gradient(90deg,transparent,#e11d48,#C9366F,#8b7fd4,transparent);animation:introLine 1.3s .55s cubic-bezier(.2,.7,.2,1) forwards}
 @keyframes introLogo{from{opacity:0;transform:translateY(22px) scale(.92);filter:blur(10px)}60%{filter:blur(0)}to{opacity:1;transform:none;filter:none}}
 @keyframes introLine{to{width:min(60vw,320px)}}
@@ -283,7 +283,7 @@ html,body{overflow-x:clip}
  .sv .r{padding:13px 0}
  .team{--g:14px;gap:28px var(--g)}.team .tm h3{font-size:20px}.team .tm .role{font-size:10px;letter-spacing:1px}.team .tm p{font-size:13px}.team .tm .bt{padding:10px 6px;font-size:10px;letter-spacing:1px}.av{font-size:44px;margin-bottom:12px}
  .ct{gap:34px}.hrs .r{padding:11px 0;font-size:15px}
- .ft{padding:42px 0 100px}.ft .g{gap:26px}.ft .flogo{height:90px}
+ .ft{padding:42px 0 100px}.ft .g{gap:26px}.ft .flogo{height:62px}
  .ft a{padding:5px 0}
  .cta h2{font-size:30px}
  /* prenotazione */
@@ -350,3 +350,14 @@ html,body{overflow-x:clip}
 .calbox b{display:block;font:700 11px Inter;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
 .calbtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}.calbtns .bt{margin:0;flex:1 1 160px;margin-top:0!important}
 .calmini{display:block;margin-top:5px;font-size:12.5px}.calmini a,.calmini .lnk{color:var(--gold);text-decoration:underline;font:600 12.5px Inter;text-transform:none;letter-spacing:0}
+
+/* WhatsApp, ricerca servizi, elenco servizi in due colonne, abbonamento */
+.wafab{position:fixed;right:18px;bottom:20px;z-index:55;display:flex;align-items:center;gap:9px;background:#25D366;color:#fff;padding:11px 18px 11px 12px;border-radius:999px;font:600 14px Inter,sans-serif;text-decoration:none;box-shadow:0 10px 26px -8px rgba(37,211,102,.75),0 2px 8px rgba(0,0,0,.25);transition:transform .2s}
+.wafab:hover{transform:translateY(-2px)}.wafab svg{width:30px;height:30px;flex:none}
+@media(max-width:880px){.wafab{right:12px;bottom:calc(86px + env(safe-area-inset-bottom));padding:10px 14px 10px 10px;font-size:13px}.wafab svg{width:26px;height:26px}}
+.srch{text-align:center}.srch input{display:block;width:100%;max-width:460px;margin:0 auto 22px;padding:12px 18px;border:1px solid var(--bd);border-radius:999px;background:#fff;font:15px Inter,sans-serif}
+.bk2 .srch{text-align:left}.bk2 .srch input{margin:0 0 18px}
+.svgrid{display:grid;grid-template-columns:1fr 1fr;column-gap:56px;max-width:1000px;margin:0 auto}
+@media(max-width:760px){.svgrid{grid-template-columns:1fr}}
+.subbox{border-color:#C9366F}.subn{display:flex;align-items:baseline;gap:10px;margin:4px 0 10px}.subn b{font:700 46px 'Playfair Display',serif;color:#C9366F;line-height:1}.subn span{color:var(--mu)}
+.subbar{height:8px;border-radius:99px;background:#eee;overflow:hidden}.subbar i{display:block;height:100%;background:linear-gradient(90deg,#C9366F,#8a2150)}

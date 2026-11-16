@@ -7,6 +7,7 @@ const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0
 let D = null; // dati pubblici
 const money = n => (D?.shop.currency || '$') + (Math.round(n * 100) / 100).toLocaleString('it-IT');
 const page = document.body.dataset.page;
+const priceOf = x => +x.price_max > +x.price ? 'da ' + money(x.price) + ' a ' + money(x.price_max) : money(x.price);
 const initial = s => esc((s || '?').trim()[0]?.toUpperCase());
 const avatar = s => `<div class="av">${s.photo ? `<img loading="lazy" decoding="async" width="400" height="500" src="${esc(s.photo)}" alt="${esc(s.name)}, ${esc(s.role || 'team')}">` : initial(s.name)}</div>`;
 
@@ -16,6 +17,9 @@ const hasMail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email || '') && !/@esem
 const mapsUrl = s => s.maps || 'https://maps.google.com/?q=' + encodeURIComponent(s.address);
 const phoneLink = s => hasNum(s.phone) ? `<a href="tel:${esc(s.phone.replace(/[^\d+]/g, ''))}">${esc(s.phone)}</a>` : '';
 const mailLink = s => hasMail(s) ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a>` : '';
+// numero WhatsApp: quello impostato, altrimenti il telefono se è un cellulare
+const waNum = s => { if (hasNum(s.whatsapp)) return s.whatsapp.replace(/\D/g, ''); const d = String(s.phone || '').replace(/\D/g, '').replace(/^(0039|39)/, ''); return /^3\d{8,9}$/.test(d) ? '39' + d : ''; };
+const waFab = s => waNum(s) ? `<a class="wafab" href="https://wa.me/${waNum(s)}?text=${encodeURIComponent('Ciao! Vorrei avere informazioni.')}" target="_blank" rel="noopener" aria-label="Scrivici su WhatsApp"><svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16 3a13 13 0 0 0-11.200 19.600L3 29l6.600-1.700A13 13 0 1 0 16 3z"/><g transform="translate(7.500 7) scale(.7)"><path fill="#25D366" d="M6.620 10.790c1.440 2.830 3.760 5.140 6.590 6.590l2.200-2.200c.270-.270.670-.360 1.020-.240 1.120.370 2.330.570 3.570.570.550 0 1 .450 1 1V20c0 .550-.450 1-1 1-9.390 0-17-7.610-17-17 0-.550.450-1 1-1h3.500c.550 0 1 .450 1 1 0 1.250.200 2.450.570 3.570.110.350.030.740-.250 1.020l-2.200 2.200z"/></g></svg><span>Scrivici su WhatsApp</span></a>` : '';
 const waLink = s => hasNum(s.whatsapp) ? `<a href="https://wa.me/${esc(s.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : '';
 const socialLinks = s => (s.instagram ? `<a href="${esc(s.instagram)}" target="_blank" rel="noopener">Instagram</a>` : '') + (s.facebook ? `<a href="${esc(s.facebook)}" target="_blank" rel="noopener">Facebook</a>` : '');
 
@@ -54,21 +58,21 @@ document.addEventListener('click', e => {
 addEventListener('pageshow', e => { if (e.persisted) document.body.classList.remove('leaving'); });
 
 if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => { }));
-Promise.all([fetch('/api/public').then(r => r.json()), fetch('/api/account/me').then(r => r.json()).catch(() => ({}))]).then(([d, m]) => { D = d; ME = m.account || null; MYAPPTS = m.appointments || []; start(); })
+Promise.all([fetch('/api/public').then(r => r.json()), fetch('/api/account/me').then(r => r.json()).catch(() => ({}))]).then(([d, m]) => { D = d; ME = m.account || null; MYAPPTS = m.appointments || []; SUB = m.sub || null; start(); })
   .catch(() => { $('#main').innerHTML = '<div class="wrap" style="padding:120px 24px;text-align:center"><h2>Servizio momentaneamente non disponibile</h2><p class="mu" style="margin:10px 0 26px">Stiamo avendo un problema tecnico. Riprova tra qualche minuto.</p><button class="bt" onclick="location.reload()">Riprova</button></div>'; });
 
 function start() {
   const s = D.shop;
   seo(s);
-  $('#hdr').innerHTML = `<header class="hd"><div class="in"><a class="logo" href="/"><img src="/assets/img/logo.png" width="640" height="326" alt="${esc(s.name)} ${esc(s.tagline)} a ${esc(s.city)}"></a>
+  $('#hdr').innerHTML = `<header class="hd"><div class="in"><a class="logo" href="/"><img src="/assets/img/logo-header.png" width="1481" height="400" alt="${esc(s.name)} ${esc(s.tagline)} a ${esc(s.city)}"></a>
     <button class="burger" aria-label="Menu" onclick="document.querySelector('.nav').classList.toggle('open')">☰</button>
     <nav class="nav">${PAGES.map(([h, l, k]) => `<a href="${h}" class="${page === k ? 'on' : ''}">${l}</a>`).join('')}<a href="/account" class="${page === 'account' ? 'on' : ''}" data-acc>${accLabel()}</a><a class="bt sm" style="color:#fff" href="/prenota">Prenota</a></nav></div></header>`;
   $('#ftr').innerHTML = `<footer class="ft"><div class="wrap"><div class="g">
-    <div><img class="flogo" src="/assets/img/logo.png" width="640" height="326" loading="lazy" alt="${esc(s.name)}"><p>${esc(s.tagline)}<br>${esc(s.address)}</p></div>
+    <div><img class="flogo" src="/assets/img/logo-header.png" width="1481" height="400" loading="lazy" alt="${esc(s.name)}"><p>${esc(s.tagline)}<br>${esc(s.address)}</p></div>
     <div><h4>Pagine</h4>${PAGES.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}<a href="/prenota">Prenota</a></div>
     <div><h4>Contatti</h4>${phoneLink(s)}${mailLink(s)}${waLink(s)}${socialLinks(s)}</div></div>
     <div class="c"><span>© ${new Date().getFullYear()} ${esc(s.name)}</span><a href="/admin" style="display:inline;margin:0">Area riservata</a></div></div></footer>`;
-  document.body.insertAdjacentHTML('beforeend', bottomNav());
+  document.body.insertAdjacentHTML('beforeend', bottomNav() + (page === 'prenota' ? '' : waFab(s)));
   ({ home, servizi, team, galleria, prenota, contatti, account }[page] || (() => { }))();
   const io = new IntersectionObserver(e => e.forEach(x => { if (x.isIntersecting) { x.target.classList.add('in'); io.unobserve(x.target); } }), { threshold: .08 });
   document.querySelectorAll('.fade').forEach(el => io.observe(el));
@@ -109,17 +113,19 @@ function lightbox(i) {
   el.onclick = () => el.remove(); document.body.append(el);
   document.addEventListener('keydown', function k(e) { if (e.key === 'Escape') { el.remove(); document.removeEventListener('keydown', k); } });
 }
-function serviceLists(cat) {
+function serviceLists(cat, q) {
   // i prezzi sono uguali per tutti gli operatori: un solo elenco, senza duplicati
-  const seen = new Set();
+  const seen = new Set(), qq = (q || '').trim().toLowerCase();
   const l = D.services.filter(x => {
-    if (x.category !== cat || seen.has(x.name.toLowerCase())) return false;
-    seen.add(x.name.toLowerCase());
+    if (qq ? !x.name.toLowerCase().includes(qq) : x.category !== cat) return false;
+    const k = x.category + '|' + x.name.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
     return true;
   });
-  if (!l.length) return '<div class="empty" style="grid-column:1/-1">Nessun servizio in questa categoria.</div>';
-  return `<div class="sv fade" style="grid-column:1/-1;max-width:640px;margin:0 auto;width:100%">
-    ${l.map(x => `<div class="r"><span>${esc(x.name)}<small>${x.minutes} minuti</small></span><b>${money(x.price)}</b></div>`).join('')}</div>`;
+  if (!l.length) return '<div class="empty" style="grid-column:1/-1">' + (qq ? 'Nessun servizio trovato.' : 'Nessun servizio in questa categoria.') + '</div>';
+  return `<div class="sv svgrid fade" style="grid-column:1/-1;width:100%">
+    ${l.map(x => `<div class="r"><span>${esc(x.name)}<small>${qq ? CATS[x.category] + ' · ' : ''}${x.minutes} minuti</small></span><b>${priceOf(x)}</b></div>`).join('')}</div>`;
 }
 
 /* ---------- pagine ---------- */
@@ -137,7 +143,7 @@ function home() {
     <p class="lead">Una selezione dei trattamenti più richiesti. Il listino completo è nella pagina Servizi.</p>
     <div class="cols" style="text-align:left">${cats.map(c => {
       const l = D.services.filter(x => x.category === c).slice(0, 4);
-      return `<div class="sv fade"><h3><span>${CATS[c]}</span><a href="/servizi">Tutti →</a></h3>${l.map(x => `<div class="r"><span>${esc(x.name)}<small>${x.minutes} minuti</small></span><b>${money(x.price)}</b></div>`).join('')}</div>`;
+      return `<div class="sv fade"><h3><span>${CATS[c]}</span><a href="/servizi">Tutti →</a></h3>${l.map(x => `<div class="r"><span>${esc(x.name)}<small>${x.minutes} minuti</small></span><b>${priceOf(x)}</b></div>`).join('')}</div>`;
     }).join('')}</div></div></section>
   <section class="sec alt"><div class="wrap ctr"><div class="eb">Chi siamo</div><h2 class="title">Il nostro team</h2><p class="lead">Persone, prima ancora che professionisti.</p>${teamHtml()}</div></section>
   ${D.gallery.length ? `<section class="sec"><div class="wrap ctr"><div class="eb">Galleria</div><h2 class="title">I nostri lavori</h2><div style="text-align:left">${galleryHtml(D.gallery.slice(0, 6))}</div><p style="margin-top:30px"><a class="bt o" href="/galleria">Vedi tutta la galleria</a></p></div></section>` : ''}
@@ -153,14 +159,17 @@ function servizi() {
   const want = new URLSearchParams(location.search).get('cat');
   let cur = cats.includes(want) ? want : cats[0];
   $('#main').innerHTML = `<div class="page-hd"><div class="eb">Listino</div><h1>I nostri servizi</h1></div>
-   <section class="sec"><div class="wrap"><div class="tabs" id="tb"></div><div class="cols" id="sl"></div>
+   <section class="sec"><div class="wrap"><div class="srch"><input id="sq" type="search" placeholder="🔍 Cerca un servizio…" autocomplete="off" aria-label="Cerca un servizio"></div><div class="tabs" id="tb"></div><div class="cols" id="sl"></div>
    <p class="ctr" style="margin-top:40px"><a class="bt" href="/prenota">Prenota ora</a></p></div></section>`;
   const draw = () => {
     $('#tb').innerHTML = cats.map(c => `<button class="${c === cur ? 'on' : ''}" data-c="${c}">${CATS[c]}</button>`).join('');
     $('#tb').querySelectorAll('button').forEach(b => b.onclick = () => { cur = b.dataset.c; draw(); });
-    $('#sl').innerHTML = serviceLists(cur);
+    $('#tb').style.display = SQ ? 'none' : '';
+    $('#sl').innerHTML = serviceLists(cur, SQ);
     document.querySelectorAll('.fade').forEach(el => el.classList.add('in'));
   };
+  let SQ = '';
+  $('#sq').oninput = e => { SQ = e.target.value; draw(); };
   draw();
 }
 
@@ -186,7 +195,7 @@ function contatti() {
 
 /* ---------- prenotazione guidata (4 passi: servizio → operatore → giorno e ora → dati) ---------- */
 let B = { step: 1 };
-const rangeTxt = (a, b, f) => a === b ? f(a) : 'da ' + f(Math.min(a, b));
+const rangeTxt = (a, b, f) => a === b ? f(a) : 'da ' + f(Math.min(a, b)) + ' a ' + f(Math.max(a, b));
 function svcGroups() {
   const m = new Map();
   D.services.filter(x => !B.pre || x.staff_id === B.pre).forEach(x => {
@@ -195,8 +204,8 @@ function svcGroups() {
     m.get(k).items.push(x);
   });
   return [...m.values()].map(g => ({
-    ...g, staff: g.items.map(i => D.staff.find(s => s.id === i.staff_id)).filter(Boolean),
-    pmin: Math.min(...g.items.map(i => +i.price)), pmax: Math.max(...g.items.map(i => +i.price)),
+    ...g, staff: g.items.map(i => D.staff.find(s => s.id === i.staff_id)).filter(Boolean).sort((a, b) => (b.is_owner ? 1 : 0) - (a.is_owner ? 1 : 0) || D.staff.indexOf(a) - D.staff.indexOf(b)),
+    pmin: Math.min(...g.items.map(i => +i.price)), pmax: Math.max(...g.items.map(i => +(i.price_max || i.price))),
     mmin: Math.min(...g.items.map(i => +i.minutes)), mmax: Math.max(...g.items.map(i => +i.minutes)),
   }));
 }
@@ -223,18 +232,16 @@ function wizard() {
     const c = cats.includes(B.cat) ? B.cat : cats[0];
     el.innerHTML = head(1, 'Seleziona il servizio', B.pre ? `Prenotazione con <b>${esc(D.staff.find(s => s.id === B.pre)?.name)}</b>` : 'Scegli il trattamento: ti guidiamo passo dopo passo.', 0, '') +
       (B.pre ? `<button class="lnk" style="margin-bottom:14px" onclick="B.pre=null;B.svc=null;wizard()">× Vedi i servizi di tutto il team</button>` : '') +
-      (cats.length > 1 ? `<div class="tabs" style="justify-content:flex-start;margin-bottom:18px">${cats.map(k => `<button class="${k === c ? 'on' : ''}" onclick="B.cat='${k}';wizard()">${CATS[k]}</button>`).join('')}</div>` : '') +
-      `<div class="cards c3">${groups.filter(g => g.category === c).map(g => `<div class="cd ${B.svc === g.key ? 'on' : ''}" onclick="pickSvc('${g.key}')">
-        <div><div class="ct"><h3>${esc(g.name)}</h3><span class="pc">${priceTxt(g)}</span></div>
-        <p>${g.staff.length ? 'Con ' + g.staff.map(s => esc(s.name.split(' ')[0])).join(', ') : ''}</p></div>
-        <div class="cf"><span>◷ ${minTxt(g)}</span><i>${B.svc === g.key ? 'Selezionato' : 'Scegli'}</i></div></div>`).join('') || '<div class="empty" style="grid-column:1/-1">Nessun servizio disponibile.</div>'}</div>`;
+      `<div class="srch"><input id="bq" type="search" placeholder="🔍 Cerca un servizio…" autocomplete="off" value="${esc(B.q || '')}" oninput="B.q=this.value;$('#svcs').innerHTML=svcCardsHtml()" aria-label="Cerca un servizio"></div>` +
+      (cats.length > 1 ? `<div class="tabs" style="justify-content:flex-start;margin-bottom:18px">${cats.map(k => `<button class="${k === c ? 'on' : ''}" onclick="B.cat='${k}';B.q='';wizard()">${CATS[k]}</button>`).join('')}</div>` : '') +
+      `<div class="cards c3" id="svcs">${svcCardsHtml()}</div>`;
   } else if (B.step === 2) {
     const g = curGroup(), many = g.staff.length > 1;
     el.innerHTML = head(2, 'Scegli il tuo operatore', `Servizio: <b>${esc(g.name)}</b> (${minTxt(g)} • ${priceTxt(g)})`, 1, 'Cambia servizio') +
       `<div class="cards c4">${many ? `<div class="cd ctr2 ${B.staff === 'any' ? 'on' : ''}" onclick="pickStaff('any')"><div><div class="pf big any">✦</div><h3>Nessuna preferenza</h3><small>Primo disponibile</small>
          <p>Massima flessibilità: ti assegniamo il primo professionista libero.</p></div><i>${B.staff === 'any' ? 'Selezionato' : 'Scegli'}</i></div>` : ''}
        ${g.staff.map(s => `<div class="cd ctr2 ${B.staff === s.id ? 'on' : ''}" onclick="pickStaff('${s.id}')"><div>${photoOf(s, 1)}<h3>${esc(s.name)}</h3><small>${esc(s.role)}</small>
-         <p>${esc(s.bio || '')}</p><p class="pc2">${money(g.items.find(i => i.staff_id === s.id).price)} · ${g.items.find(i => i.staff_id === s.id).minutes} min</p></div><i>${B.staff === s.id ? 'Selezionato' : 'Scegli'}</i></div>`).join('')}</div>` + backBtn(1);
+         <p>${esc(s.bio || '')}</p><p class="pc2">${priceOf(g.items.find(i => i.staff_id === s.id))} · ${g.items.find(i => i.staff_id === s.id).minutes} min</p></div><i>${B.staff === s.id ? 'Selezionato' : 'Scegli'}</i></div>`).join('')}</div>` + backBtn(1);
   } else if (B.step === 3) {
     const g = curGroup(), days = [], now = new Date();
     for (let i = 0; i < 28; i++) days.push(new Date(now.getFullYear(), now.getMonth(), now.getDate() + i));
@@ -271,6 +278,15 @@ function wizard() {
   }
   scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + scrollY - 100), behavior: 'smooth' });
 }
+function svcCardsHtml() {
+  const groups = svcGroups(), q = (B.q || '').trim().toLowerCase(), cats = Object.keys(CATS).filter(c => groups.some(g => g.category === c));
+  const c = cats.includes(B.cat) ? B.cat : cats[0];
+  const l = q ? groups.filter(g => g.name.toLowerCase().includes(q)) : groups.filter(g => g.category === c);
+  return l.map(g => `<div class="cd ${B.svc === g.key ? 'on' : ''}" onclick="pickSvc('${g.key}')">
+        <div><div class="ct"><h3>${esc(g.name)}</h3><span class="pc">${priceTxt(g)}</span></div>
+        <p>${q ? CATS[g.category] + (g.staff.length ? ' · ' : '') : ''}${g.staff.length ? 'Con ' + g.staff.map(s => esc(s.name.split(' ')[0])).join(', ') : ''}</p></div>
+        <div class="cf"><span>◷ ${minTxt(g)}</span><i>${B.svc === g.key ? 'Selezionato' : 'Scegli'}</i></div></div>`).join('') || '<div class="empty" style="grid-column:1/-1">Nessun servizio trovato.</div>';
+}
 function pickSvc(k) {
   B.svc = k; B.date = null; B.slot = null;
   const g = curGroup();
@@ -288,7 +304,7 @@ async function loadSlots(g) {
 }
 
 /* ---------- account clienti: accesso che resta attivo + prenotazione con dati precompilati ---------- */
-let ME = null, MYAPPTS = [];
+let ME = null, MYAPPTS = [], SUB = null;
 const AUTH = { mode: 'login', cb: null };
 const accLabel = () => ME ? esc(ME.name.split(' ')[0]) : 'Accedi';
 const syncNav = () => document.querySelectorAll('[data-acc]').forEach(e => { e.textContent = ME ? ME.name.split(' ')[0] : 'Accedi'; });
@@ -307,7 +323,7 @@ function bottomNav() {
 }
 async function refreshMe() {
   const m = await fetch('/api/account/me').then(r => r.json()).catch(() => ({}));
-  ME = m.account || null; MYAPPTS = m.appointments || []; syncNav();
+  ME = m.account || null; MYAPPTS = m.appointments || []; SUB = m.sub || null; syncNav();
 }
 const authBox0 = mode => `<div class="acc-tabs"><button type="button" class="${mode === 'login' ? 'on' : ''}" onclick="authMode('login')">Accedi</button><button type="button" class="${mode === 'reg' ? 'on' : ''}" onclick="authMode('reg')">Crea account</button></div><div id="ae" class="down err"></div>
   ${mode === 'login'
@@ -348,7 +364,7 @@ function openAuth(cb) {
 function closeAuth() { document.getElementById('amd')?.remove(); }
 async function logout() {
   await fetch('/api/account/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => { });
-  ME = null; MYAPPTS = []; syncNav();
+  ME = null; MYAPPTS = []; SUB = null; syncNav();
   if (page === 'account') drawAccount(); else if (page === 'prenota' && B.step === 4) wizard();
 }
 const STLAB = { booked: 'Confermato', done: 'Completato', noshow: 'Non presentato' };
@@ -372,7 +388,7 @@ function drawAccount() {
     <label class="lb2">Telefono</label><input id="pp" type="tel" value="${esc(ME.phone)}" maxlength="30"><label class="lb2">Email</label><input id="pm" type="email" value="${esc(ME.email)}" maxlength="120">
     <button class="bt" type="button" style="width:100%;margin-top:16px" onclick="saveProfile()">Salva i miei dati</button>
     <button class="bt o" type="button" style="width:100%;margin-top:10px" onclick="logout()">Esci</button><p class="mu sm2" style="text-align:center">Resti collegato su questo dispositivo finché non esci.</p></div>
-    <div><div class="bx" style="margin-top:0"><h3 class="sh">Prossimi appuntamenti</h3>${up.length ? up.map(apptCard).join('') : '<p class="mu" style="margin:0 0 14px">Nessun appuntamento in programma.</p><a class="bt" href="/prenota">Prenota ora</a>'}
+    <div>${SUB ? `<div class="bx subbox" style="margin-top:0"><h3 class="sh">🎟️ Il tuo abbonamento</h3><div class="subn"><b>${SUB.left}</b><span>${SUB.left === 1 ? 'utilizzo rimasto' : 'utilizzi rimasti'} su ${SUB.total}</span></div><div class="subbar"><i style="width:${Math.round(SUB.used / SUB.total * 100)}%"></i></div><p class="mu sm2" style="margin:10px 0 0">Attivo dal ${esc(new Date(SUB.start + 'T12:00').toLocaleDateString('it-IT'))} · ne hai già usati ${SUB.used}.</p></div>` : ''}<div class="bx" ${SUB ? '' : 'style="margin-top:0"'}><h3 class="sh">Prossimi appuntamenti</h3>${up.length ? up.map(apptCard).join('') : '<p class="mu" style="margin:0 0 14px">Nessun appuntamento in programma.</p><a class="bt" href="/prenota">Prenota ora</a>'}
       <p class="mu sm2" style="margin-top:12px">Per spostare o disdire chiamaci al ${esc(D.shop.phone)}.</p></div>
     ${past.length ? `<div class="bx"><h3 class="sh">Storico</h3>${past.slice(0, 10).map(apptCard).join('')}</div>` : ''}</div></div>`;
 }

@@ -144,3 +144,7 @@ table{font-size:14px}th{border-bottom:1px solid var(--bd)}
 
 /* QR code */
 .qrbox{width:min(100%,320px);margin:6px auto;padding:14px;background:#fff;border:1px solid var(--bd);border-radius:14px;box-shadow:var(--sh)}.qrbox svg{display:block;width:100%;height:auto}
+
+/* orari bloccati / assenze nell'agenda */
+.ag-b{position:absolute;left:0;right:0;z-index:2;overflow:hidden;padding:3px 6px;font-size:11px;font-weight:600;color:#6b6358;border-left:4px solid #8d857a;background:repeating-linear-gradient(45deg,#e9e5dd,#e9e5dd 7px,#f4f1ec 7px,#f4f1ec 14px);cursor:pointer}
+.ag-b:hover{background:#e2ddd3}

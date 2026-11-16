@@ -1,7 +1,7 @@
 /* Service worker minimale: rende il sito installabile come app e lo apre anche con rete debole.
    Dati (/api), pannelli (/admin, /owner) e richieste non-GET passano sempre dalla rete. */
 const CACHE = 'vdi-v1';
-const SHELL = ['/', '/assets/css/site.css', '/assets/js/site.js', '/assets/img/logo.png'];
+const SHELL = ['/', '/assets/css/site.css', '/assets/js/site.js', '/assets/img/logo.png', '/assets/img/logo-header.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).catch(() => { })).then(() => self.skipWaiting()));
