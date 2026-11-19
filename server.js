@@ -392,7 +392,7 @@ async function api(store, req, res, url) {
         .sort((x, y) => (y.date + y.time).localeCompare(x.date + x.time)).slice(0, 40)
         .map(x => ({ id: x.id, date: x.date, time: x.time, minutes: x.minutes || 30, service_name: x.service_name, status: x.status, staff: store.get('staff', x.staff_id)?.name || '', code: x.booking_code || '' }));
       const sub = store.rows('subscriptions').filter(x => x.client_id === a.client_id && x.uses.length < x.total).sort((x, y) => y.start_date.localeCompare(x.start_date))[0];
-      return json(res, 200, { account: view(a), appointments, sub: sub ? { total: sub.total, used: sub.uses.length, left: sub.total - sub.uses.length, start: sub.start_date } : null });
+      return json(res, 200, { account: view(a), appointments, sub: sub ? { total: sub.total, used: sub.uses.length, left: sub.total - sub.uses.length, start: sub.start_date, uses: [...sub.uses].sort() } : null });
     }
     if (route === 'POST /api/account/register') {
       if (limited(ip, 'acc-reg', 6, 3600e3)) throw fail(429, 'Troppe richieste, riprova più tardi');
