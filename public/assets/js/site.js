@@ -243,12 +243,20 @@ function wizard() {
        ${g.staff.map(s => `<div class="cd ctr2 ${B.staff === s.id ? 'on' : ''}" onclick="pickStaff('${s.id}')"><div>${photoOf(s, 1)}<h3>${esc(s.name)}</h3><small>${esc(s.role)}</small>
          <p>${esc(s.bio || '')}</p><p class="pc2">${priceOf(g.items.find(i => i.staff_id === s.id))} · ${g.items.find(i => i.staff_id === s.id).minutes} min</p></div><i>${B.staff === s.id ? 'Selezionato' : 'Scegli'}</i></div>`).join('')}</div>` + backBtn(1);
   } else if (B.step === 3) {
-    const g = curGroup(), days = [], now = new Date();
-    for (let i = 0; i < 28; i++) days.push(new Date(now.getFullYear(), now.getMonth(), now.getDate() + i));
+    const g = curGroup(), now = new Date(), today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()), MAXM = 3;
     const why = d => { const cl = (D.shop.closures || []).find(c => c.date === iso(d)); return cl ? (cl.label || 'Chiuso') : D.shop.hours[d.getDay()].closed ? 'Chiuso' : ''; };
+    B.cm = Math.min(MAXM, Math.max(0, B.cm || 0));
+    const first = new Date(today0.getFullYear(), today0.getMonth() + B.cm, 1), nDays = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate(), lead = (first.getDay() + 6) % 7;
+    const cells = Array(lead).fill('<i></i>');
+    for (let n = 1; n <= nDays; n++) {
+      const d = new Date(first.getFullYear(), first.getMonth(), n), w = why(d), past = d < today0;
+      cells.push(`<button type="button" ${w || past ? 'disabled' : ''} class="${B.date === iso(d) ? 'on' : ''} ${w && !past ? 'cls' : ''}" title="${esc(w)}" onclick="B.date='${iso(d)}';B.slot=null;wizard()"><b>${n}</b>${w && !past ? '<small>' + esc(w.length > 9 ? 'Chiuso' : w) + '</small>' : ''}</button>`);
+    }
+    const calHtml = `<div class="mcal"><div class="mch"><button type="button" class="bt o sm" ${B.cm <= 0 ? 'disabled' : ''} onclick="B.cm--;wizard()" aria-label="Mese precedente">‹</button><b>${first.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</b><button type="button" class="bt o sm" ${B.cm >= MAXM ? 'disabled' : ''} onclick="B.cm++;wizard()" aria-label="Mese successivo">›</button></div>
+      <div class="mcg">${['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'].map(x => `<span>${x}</span>`).join('')}${cells.join('')}</div>
+      <p class="mcl"><span class="dot r"></span>Giorni in rosso: negozio chiuso, non prenotabili</p></div>`;
     el.innerHTML = head(3, 'Seleziona giorno e orario', `Operatore: <b>${esc(staffName())}</b> • Servizio: <b>${esc(g.name)}</b> (${minTxt(g)})`, 2, 'Cambia operatore') +
-      `<label class="lb2">1. Scegli il giorno</label><div class="dys">${days.map(d => `<button type="button" ${why(d) ? 'disabled' : ''} class="${B.date === iso(d) ? 'on' : ''}" onclick="B.date='${iso(d)}';B.slot=null;wizard()">
-        <small>${d.toLocaleDateString('it-IT', { weekday: 'short' })}</small><b>${d.getDate()}</b><small>${why(d) || d.toLocaleDateString('it-IT', { month: 'short' })}</small></button>`).join('')}</div>
+      `<label class="lb2">1. Scegli il giorno</label>${calHtml}
       <div class="bx"><div class="bxh"><div><label class="lb2" style="margin:0">2. Scegli l'orario${B.date ? ' · ' + esc(longDate(B.date)) : ''}</label><p>Orari ogni ${D.shop.slot_step || 30} minuti.</p></div>
         <div class="lg"><span class="dot g"></span>Disponibile <span class="dot r"></span>Occupato</div></div><div id="sl">${B.date ? '<p class="mu">Verifica disponibilità in corso…</p>' : '<p class="mu">Scegli un giorno per vedere gli orari.</p>'}</div></div>` + backBtn(2);
     if (B.date) loadSlots(g);

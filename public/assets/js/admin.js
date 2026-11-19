@@ -297,7 +297,7 @@ function dayGrid(l) {
          <b>${a.time}</b> ${esc(a.client_name || cname(a.client_id))}${h >= 44 ? `<small>${esc(a.service_name)}${a.source === 'online' ? ' · online' : ''}</small>` : ''}</div>`;
       }).join('')}</div>`;
   }).join('');
-  return `${R.closed ? '<div class="card mu" style="padding:10px 14px;margin-bottom:12px">Il negozio risulta chiuso in questo giorno, ma puoi inserire comunque appuntamenti.</div>' : ''}
+  return `${R.closed ? '<div class="card mu" style="padding:10px 14px;margin-bottom:12px">Il negozio risulta chiuso in questo giorno: non è possibile inserire appuntamenti.</div>' : ''}
    <div class="ag-w"><div class="ag" style="grid-template-columns:54px repeat(${cols.length},minmax(150px,1fr))">
     <div class="ag-h corner"></div>${cols.map((s, ci) => `<div class="ag-h" style="--col:${COLS[ci % COLS.length]}">${esc(s.name.split(' ')[0])}<small>${l.filter(a => a.staff_id === s.id).length} app.</small></div>`).join('')}
     ${timeCol}${colHtml}</div></div>
@@ -369,6 +369,8 @@ function apptModal(id, pre = {}) {
     const fromSub = sv === 'sub';
     if (fromSub && !activeSub(cid) && !(a && a.from_sub)) throw new Error('Il cliente non ha un abbonamento attivo');
     const svc = A.services.find(x => x.id === sv);
+    const dh = A.shop.hours[pd(date).getDay()], dcl = (A.shop.closures || []).find(c => c.date === date);
+    if (dcl || !dh || dh.closed) throw new Error('Il negozio è chiuso in questa data' + (dcl && dcl.label ? ' (' + dcl.label + ')' : '') + ': scegli un altro giorno');
     const clash = A.appts.find(x => x.id !== id && x.staff_id === st && x.date === date && ['booked', 'done'].includes(x.status) && toMin(time) < toMin(x.time) + (x.minutes || 30) && toMin(time) + minutes > toMin(x.time));
     const blkHit = blocksFor(st, date).find(b => { const [f, e2] = blockRange(b); return toMin(time) < e2 && toMin(time) + minutes > f; });
     if (blkHit && !confirm(`${sname(st)} risulta non disponibile (${blockTxt(blkHit)}). Aggiungere comunque?`)) return false;
@@ -465,11 +467,14 @@ function delClient(id) { if (confirm('Eliminare il cliente? Gli appuntamenti e g
 /* il colore fatto si scrive nelle note del cliente (con la data) */
 function clientColorModal(cid) {
   const c = cli(cid); if (!c) return toast('Cliente non trovato', true);
-  modal('🎨 Colore · ' + esc(c.name), `<label>Colore fatto oggi (${fdate(today())})</label><input id="u_col" maxlength="200" placeholder="Es. rosso ramato 6.64 + ossidante 20 vol, 35 min di posa"><p class="mu" style="margin:8px 0 0">Verrà aggiunto alle note del cliente.</p>`,
+  modal('🎨 Colore · ' + esc(c.name), `<label>Colori fatti oggi (${fdate(today())}) · quanti vuoi</label><div id="f_cols">${colorRow()}</div>
+     <button type="button" class="btn sec sm" onclick="$('#f_cols').insertAdjacentHTML('beforeend',colorRow());$('#f_cols').lastElementChild.querySelector('input').focus()">+ Aggiungi un altro colore</button>
+     <p class="mu" style="margin:8px 0 0">Verranno aggiunti alle note del cliente.</p>`,
     async () => {
-      const v = $('#u_col').value.trim(); if (!v) throw new Error('Scrivi il colore');
-      const line = '🎨 ' + fdate(today()) + ': ' + v, notes = c.notes ? c.notes.trimEnd() + '\n' + line : line;
-      await api('PATCH', '/api/admin/clients/' + cid, { notes }); toast('Colore aggiunto alle note'); return true;
+      const vals = [...document.querySelectorAll('.f_col')].map(i => i.value.trim().replace(/\n/g, ' ')).filter(Boolean);
+      if (!vals.length) throw new Error('Scrivi almeno un colore');
+      const lines = vals.map(v => '🎨 ' + fdate(today()) + ': ' + v).join('\n'), notes = c.notes ? c.notes.trimEnd() + '\n' + lines : lines;
+      await api('PATCH', '/api/admin/clients/' + cid, { notes }); toast(vals.length > 1 ? 'Colori aggiunti alle note' : 'Colore aggiunto alle note'); return true;
     });
 }
 function waClient(id) { const c = cli(id), u = waUrl(c.phone, `Ciao ${c.name.split(' ')[0]}, `); if (!u) return toast('Nessun numero di telefono', true); window.open(u, '_blank'); }
@@ -572,7 +577,7 @@ function exportCsv() {
 /* ---------- STORICO: incassi + storico del cliente (con note sul colore) ---------- */
 const HC = { q: '', cid: '' };
 const histTabs = () => `<div class="tabs"><button class="${H.view !== 'cliente' ? 'on' : ''}" onclick="H.view='incassi';draw()">📈 Storico incassi</button><button class="${H.view === 'cliente' ? 'on' : ''}" onclick="H.view='cliente';draw()">👤 Storico del cliente</button></div>`;
-function pgStorico() { return histTabs() + (H.view === 'cliente' ? pgStoricoCliente() : pgStoricoIncassi()); }
+function pgStorico() { return pgStoricoCliente(); } // lo «storico incassi» è stato rimosso: resta solo lo storico del cliente
 /* storico del cliente (condiviso da Clienti e Storico): appuntamenti con colore + acquisti in negozio */
 function histBody(c, all) {
   const hist = A.appts.filter(a => a.client_id === c.id && (all || a.status !== 'cancelled')).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));

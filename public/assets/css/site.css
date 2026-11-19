@@ -361,3 +361,19 @@ html,body{overflow-x:clip}
 @media(max-width:760px){.svgrid{grid-template-columns:1fr}}
 .subbox{border-color:#C9366F}.subn{display:flex;align-items:baseline;gap:10px;margin:4px 0 10px}.subn b{font:700 46px 'Playfair Display',serif;color:#C9366F;line-height:1}.subn span{color:var(--mu)}
 .subbar{height:8px;border-radius:99px;background:#eee;overflow:hidden}.subbar i{display:block;height:100%;background:linear-gradient(90deg,#C9366F,#8a2150)}
+
+/* calendario mensile della prenotazione: giorni di chiusura in rosso e non selezionabili */
+.mcal{max-width:420px;margin:0 0 18px}
+.mch{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.mch b{font:600 18px 'Playfair Display',serif;text-transform:capitalize}
+.mch .bt{margin:0;padding:8px 14px}
+.mcg{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.mcg>span{font:700 9px Inter;letter-spacing:1.5px;text-transform:uppercase;text-align:center;color:#8a8580;padding:4px 0}
+.mcg button{aspect-ratio:1;border:1px solid var(--bd);border-radius:12px;background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;font:inherit;padding:0}
+.mcg button b{font:600 17px 'Playfair Display',serif;line-height:1.1}
+.mcg button small{font:700 7px Inter;letter-spacing:.5px;text-transform:uppercase}
+.mcg button:hover:not(:disabled){border-color:var(--gold)}
+.mcg button.on{background:linear-gradient(160deg,var(--gold),#8a2150);border-color:transparent;color:#fff}
+.mcg button:disabled{opacity:.4;cursor:not-allowed;background:#f4f1ee;border-color:transparent}
+.mcg button.cls:disabled{opacity:1;background:#fdecee;color:#c8283f;border-color:#f3b8c0}
+.mcl{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#8a8580;margin:10px 0 0}
