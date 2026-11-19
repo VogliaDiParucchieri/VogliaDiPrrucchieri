@@ -213,7 +213,7 @@ function apRow(a) {
    ${a.status === 'booked' ? `<button class="btn sec sm" onclick="setStatus('${a.id}','noshow')">No-show</button><button class="btn sec sm" onclick="setStatus('${a.id}','cancelled')">Annulla</button>` : ''}
    <button class="btn sec sm" onclick="apptModal('${a.id}')">Modifica</button>
    <button class="btn wa sm" onclick="waAppt('${a.id}')">WA</button>
-   <button class="btn sec sm" onclick="colorModal('${a.id}')">🎨 ${a.color ? 'Colori' : 'Colore'}</button>
+   <button class="btn sec sm" onclick="clientColorModal('${a.client_id}')">🎨 Colore</button>
    <button class="btn del sm" onclick="delAppt('${a.id}')">✕</button></div></div>`;
 }
 const APP = { mode: 'giorno', date: today() };
@@ -324,7 +324,7 @@ function apDetail(id) {
    ${c?.phone ? `<div class="kv2"><span>Telefono</span><b>${esc(c.phone)}</b></div>` : ''}${a.notes ? `<div class="kv2"><span>Note</span><b>${esc(a.notes)}</b></div>` : ''}
    <div class="kv2"><span>Stato</span><b><span class="tag ${st[1]}">${st[0]}</span>${a.source === 'online' ? ' <span class="tag new">online</span>' : ''}</b></div>
    <div class="act" style="margin-top:14px">${a.status === 'booked' ? `<button class="btn sm" onclick="closeOv();setStatus('${a.id}','done')">Completa</button><button class="btn sec sm" onclick="closeOv();setStatus('${a.id}','noshow')">No-show</button><button class="btn sec sm" onclick="closeOv();setStatus('${a.id}','cancelled')">Annulla</button>` : `<button class="btn sec sm" onclick="closeOv();setStatus('${a.id}','booked')">Riapri</button>`}
-   <button class="btn sec sm" onclick="closeOv();apptModal('${a.id}')">Modifica</button><button class="btn wa sm" onclick="waAppt('${a.id}')">WhatsApp</button><button class="btn sec sm" onclick="closeOv();colorModal('${a.id}')">🎨 Colore</button><button class="btn del sm" onclick="closeOv();delAppt('${a.id}')">Elimina</button></div>`, null);
+   <button class="btn sec sm" onclick="closeOv();apptModal('${a.id}')">Modifica</button><button class="btn wa sm" onclick="waAppt('${a.id}')">WhatsApp</button><button class="btn sec sm" onclick="closeOv();clientColorModal('${a.client_id}')">🎨 Colore</button><button class="btn del sm" onclick="closeOv();delAppt('${a.id}')">Elimina</button></div>`, null);
 }
 function slotsDraw() {
   const box = $('#f_slots'); if (!box) return;
@@ -444,7 +444,7 @@ function clientForm(c) {
    <div class="row"><div><label>Telefono (WhatsApp)</label><input id="c_p" type="tel" value="${esc(c?.phone)}"></div><div><label>Email (promemoria)</label><input id="c_e" type="email" value="${esc(c?.email)}"></div></div>
    <label>📝 Note cliente</label><textarea id="c_t" rows="4">${esc(c?.notes)}</textarea>
    <button class="btn" onclick="saveClient('${c?.id || ''}')">${c ? 'Salva modifiche' : 'Crea cliente'}</button>
-   ${c ? `<button class="btn wa" onclick="waClient('${c.id}')">WhatsApp</button><button class="btn sec" onclick="shopModal('${c.id}')">🛍️ Acquisto in negozio</button><button class="btn sec" onclick="colorLatest('${c.id}')">🎨 Colore</button><button class="btn del" onclick="delClient('${c.id}')">Elimina</button>` : `<button class="btn sec" onclick="CL.sel=null;draw()">Annulla</button>`}</div>`;
+   ${c ? `<button class="btn wa" onclick="waClient('${c.id}')">WhatsApp</button><button class="btn sec" onclick="shopModal('${c.id}')">🛍️ Acquisto in negozio</button><button class="btn sec" onclick="clientColorModal('${c.id}')">🎨 Colore</button><button class="btn del" onclick="delClient('${c.id}')">Elimina</button>` : `<button class="btn sec" onclick="CL.sel=null;draw()">Annulla</button>`}</div>`;
 }
 function clientDetail(c) {
   const s = activeSub(c.id), hist = A.appts.filter(a => a.client_id === c.id).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
@@ -462,10 +462,15 @@ function saveClient(id) {
   act(async () => { if (id) await api('PATCH', '/api/admin/clients/' + id, data); else CL.sel = (await api('POST', '/api/admin/clients', data)).row.id; toast('Salvato'); });
 }
 function delClient(id) { if (confirm('Eliminare il cliente? Gli appuntamenti e gli incassi restano.')) act(async () => { await api('DELETE', '/api/admin/clients/' + id); CL.sel = null; }); }
-function colorLatest(cid) {
-  const l = A.appts.filter(a => a.client_id === cid && a.status !== 'cancelled').sort((x, y) => (y.date + y.time).localeCompare(x.date + x.time));
-  if (!l.length) return toast('Questo cliente non ha ancora appuntamenti', true);
-  const t = today(); colorModal((l.find(a => a.date <= t) || l[l.length - 1]).id);
+/* il colore fatto si scrive nelle note del cliente (con la data) */
+function clientColorModal(cid) {
+  const c = cli(cid); if (!c) return toast('Cliente non trovato', true);
+  modal('🎨 Colore · ' + esc(c.name), `<label>Colore fatto oggi (${fdate(today())})</label><input id="u_col" maxlength="200" placeholder="Es. rosso ramato 6.64 + ossidante 20 vol, 35 min di posa"><p class="mu" style="margin:8px 0 0">Verrà aggiunto alle note del cliente.</p>`,
+    async () => {
+      const v = $('#u_col').value.trim(); if (!v) throw new Error('Scrivi il colore');
+      const line = '🎨 ' + fdate(today()) + ': ' + v, notes = c.notes ? c.notes.trimEnd() + '\n' + line : line;
+      await api('PATCH', '/api/admin/clients/' + cid, { notes }); toast('Colore aggiunto alle note'); return true;
+    });
 }
 function waClient(id) { const c = cli(id), u = waUrl(c.phone, `Ciao ${c.name.split(' ')[0]}, `); if (!u) return toast('Nessun numero di telefono', true); window.open(u, '_blank'); }
 
@@ -575,7 +580,7 @@ function histBody(c, all) {
   return `<div style="margin-bottom:6px"><button class="btn sec sm" onclick="shopModal('${c.id}')">🛍️ Acquisto in negozio</button></div>
    ${hist.length ? hist.map(a => `<div class="item"><div><b>${fdate(a.date)} ${a.time}</b> · ${esc(a.service_name)} con ${esc(sname(a.staff_id))}${a.color ? ', ' + colorList(a.color).map(x => `<span class="colr">colore ${esc(x)}</span>`).join(' ') : ''}<br>
      <span class="tag ${STATUS[a.status][1]}">${STATUS[a.status][0]}</span> <span class="mu">${a.from_sub ? 'abbonamento' : money(a.price)}${a.notes ? ' · 📝 ' + esc(a.notes) : ''}</span></div>
-     <div class="act"><button class="btn wa sm" onclick="waAppt('${a.id}')">WA</button><button class="btn sec sm" onclick="colorModal('${a.id}')">🎨 ${a.color ? 'Modifica colori' : 'Colore'}</button></div></div>`).join('') : '<div class="mu">Nessun appuntamento</div>'}
+     <div class="act"><button class="btn wa sm" onclick="waAppt('${a.id}')">WA</button><button class="btn sec sm" onclick="clientColorModal('${a.client_id}')">🎨 Colore</button></div></div>`).join('') : '<div class="mu">Nessun appuntamento</div>'}
    ${buys.length ? '<h3>Acquisti in negozio</h3>' + buys.map(p => `<div class="item"><div><b>${fdate(p.date)}</b> · 🛍️ ${esc(p.product)}</div><div><b>${money(p.price)}</b> <button class="btn del sm" onclick="delPurchase('${p.id}')">✕</button></div></div>`).join('') : ''}`;
 }
 function shopModal(cid) {
