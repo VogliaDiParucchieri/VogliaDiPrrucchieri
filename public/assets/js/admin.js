@@ -6,7 +6,7 @@ const CATS = { uomo: 'Uomo', donna: 'Donna', estetica: 'Estetica' };
 const DAYS = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 const NAV = [
   ['index', '🏠', 'Dashboard'], ['appuntamenti', '📅', 'Appuntamenti'], ['clienti', '👥', 'Clienti'], ['abbonamenti', '🎟️', 'Abbonamenti'],
-  ['guadagni', '💰', 'Guadagni'], ['storico', '📈', 'Storico'], ['messaggi', '💬', 'Promemoria'], ['email', '✉️', 'Email ai clienti'], null,
+  ['storico', '📈', 'Storico'], ['messaggi', '💬', 'Promemoria'], ['email', '✉️', 'Email ai clienti'], null,
   ['servizi', '✂️', 'Servizi e prezzi'], ['team', '🧑‍🤝‍🧑', 'Team e dipendenti'], ['galleria', '🖼️', 'Galleria'], ['qr', '📱', 'App e QR code'], ['impostazioni', '⚙️', 'Impostazioni'],
 ];
 const NAV_EMP = [['appuntamenti', '📅', 'Appuntamenti']]; // i dipendenti vedono solo gli appuntamenti
@@ -174,12 +174,6 @@ function pgIndex() {
   const bd = birthdays();
   return `
   ${fresh.length ? `<div class="card" style="border-color:var(--gold)"><h2>🔔 Nuove prenotazioni online (${fresh.length}) <button class="btn sec sm" onclick="markSeen()">Segna come viste</button></h2>${fresh.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).map(apRow).join('')}</div>` : ''}
-  <div class="grid" style="margin-bottom:18px">
-   <div class="card stat" style="margin:0"><div class="l">Incasso di oggi</div><div class="v">${money(P.cur)}</div><div>${delta(P.cur, P.prev)} <span class="mu">vs ieri (${money(P.prev)})</span></div></div>
-   <div class="card stat" style="margin:0"><div class="l">Ancora da incassare oggi</div><div class="v">${money(expected)}</div><div class="mu">${todayL.filter(a => a.status === 'booked').length} appuntamenti da completare</div></div>
-   <div class="card stat" style="margin:0"><div class="l">Questa settimana</div><div class="v">${money(wk.cur)}</div><div>${delta(wk.cur, wk.prev)} <span class="mu">vs scorsa</span></div></div>
-   <div class="card stat" style="margin:0"><div class="l">Questo mese</div><div class="v">${money(mo.cur)}</div><div>${delta(mo.cur, mo.prev)} <span class="mu">vs scorso</span></div></div>
-  </div>
   <div class="grid2">
    <div class="card"><h2>Agenda di oggi <a class="btn sec sm" href="${BASE}/appuntamenti">Apri →</a></h2>${todayL.length ? todayL.map(apRow).join('') : '<div class="mu">Nessun appuntamento oggi</div>'}</div>
    <div>
@@ -189,8 +183,7 @@ function pgIndex() {
      <div class="stat"><div class="l">Clienti</div><div class="v">${A.clients.length}</div></div>
      <div class="stat"><div class="l">Abbonamenti attivi</div><div class="v">${A.subs.filter(s => s.uses.length < s.total).length}</div></div></div></div>
    </div></div>
-  <div class="card"><h2>Ultimi 7 giorni · ${esc(scopeLabel())}</h2>${barChart(P.bars)}</div>
-  ${A.owner || A.staff.some(s => s.boss_id === A.me.staff_id) ? teamTable() : ''}`;
+  `;
 }
 function birthdays() {
   const t = pd(today()), out = [];
@@ -220,6 +213,7 @@ function apRow(a) {
    ${a.status === 'booked' ? `<button class="btn sec sm" onclick="setStatus('${a.id}','noshow')">No-show</button><button class="btn sec sm" onclick="setStatus('${a.id}','cancelled')">Annulla</button>` : ''}
    <button class="btn sec sm" onclick="apptModal('${a.id}')">Modifica</button>
    <button class="btn wa sm" onclick="waAppt('${a.id}')">WA</button>
+   <button class="btn sec sm" onclick="colorModal('${a.id}')">🎨 ${a.color ? 'Colori' : 'Colore'}</button>
    <button class="btn del sm" onclick="delAppt('${a.id}')">✕</button></div></div>`;
 }
 const APP = { mode: 'giorno', date: today() };
@@ -330,7 +324,7 @@ function apDetail(id) {
    ${c?.phone ? `<div class="kv2"><span>Telefono</span><b>${esc(c.phone)}</b></div>` : ''}${a.notes ? `<div class="kv2"><span>Note</span><b>${esc(a.notes)}</b></div>` : ''}
    <div class="kv2"><span>Stato</span><b><span class="tag ${st[1]}">${st[0]}</span>${a.source === 'online' ? ' <span class="tag new">online</span>' : ''}</b></div>
    <div class="act" style="margin-top:14px">${a.status === 'booked' ? `<button class="btn sm" onclick="closeOv();setStatus('${a.id}','done')">Completa</button><button class="btn sec sm" onclick="closeOv();setStatus('${a.id}','noshow')">No-show</button><button class="btn sec sm" onclick="closeOv();setStatus('${a.id}','cancelled')">Annulla</button>` : `<button class="btn sec sm" onclick="closeOv();setStatus('${a.id}','booked')">Riapri</button>`}
-   <button class="btn sec sm" onclick="closeOv();apptModal('${a.id}')">Modifica</button><button class="btn wa sm" onclick="waAppt('${a.id}')">WhatsApp</button><button class="btn del sm" onclick="closeOv();delAppt('${a.id}')">Elimina</button></div>`, null);
+   <button class="btn sec sm" onclick="closeOv();apptModal('${a.id}')">Modifica</button><button class="btn wa sm" onclick="waAppt('${a.id}')">WhatsApp</button><button class="btn sec sm" onclick="closeOv();colorModal('${a.id}')">🎨 Colore</button><button class="btn del sm" onclick="closeOv();delAppt('${a.id}')">Elimina</button></div>`, null);
 }
 function slotsDraw() {
   const box = $('#f_slots'); if (!box) return;
