@@ -352,9 +352,9 @@ html,body{overflow-x:clip}
 .calmini{display:block;margin-top:5px;font-size:12.5px}.calmini a,.calmini .lnk{color:var(--gold);text-decoration:underline;font:600 12.5px Inter;text-transform:none;letter-spacing:0}
 
 /* WhatsApp, ricerca servizi, elenco servizi in due colonne, abbonamento */
-.wafab{position:fixed;right:18px;bottom:20px;z-index:55;display:flex;align-items:center;gap:9px;background:#25D366;color:#fff;padding:11px 18px 11px 12px;border-radius:999px;font:600 14px Inter,sans-serif;text-decoration:none;box-shadow:0 10px 26px -8px rgba(37,211,102,.75),0 2px 8px rgba(0,0,0,.25);transition:transform .2s}
+.wafab{position:fixed;right:18px;bottom:44px;z-index:55;display:flex;align-items:center;gap:9px;background:#25D366;color:#fff;padding:11px 18px 11px 12px;border-radius:999px;font:600 14px Inter,sans-serif;text-decoration:none;box-shadow:0 10px 26px -8px rgba(37,211,102,.75),0 2px 8px rgba(0,0,0,.25);transition:transform .2s}
 .wafab:hover{transform:translateY(-2px)}.wafab svg{width:30px;height:30px;flex:none}
-@media(max-width:880px){.wafab{right:12px;bottom:calc(86px + env(safe-area-inset-bottom));padding:10px 14px 10px 10px;font-size:13px}.wafab svg{width:26px;height:26px}}
+@media(max-width:880px){.wafab{right:12px;bottom:calc(112px + env(safe-area-inset-bottom));padding:10px 14px 10px 10px;font-size:13px}.wafab svg{width:26px;height:26px}}
 .srch{text-align:center}.srch input{display:block;width:100%;max-width:460px;margin:0 auto 22px;padding:12px 18px;border:1px solid var(--bd);border-radius:999px;background:#fff;font:15px Inter,sans-serif}
 .bk2 .srch{text-align:left}.bk2 .srch input{margin:0 0 18px}
 .svgrid{display:grid;grid-template-columns:1fr 1fr;column-gap:56px;max-width:1000px;margin:0 auto}

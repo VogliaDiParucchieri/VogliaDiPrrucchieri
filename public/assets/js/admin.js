@@ -60,10 +60,21 @@ function modal(title, html, onOk, okLabel = 'Salva') {
   if (onOk) $('#mok').onclick = async () => { try { if (await onOk(ov)) { ov.remove(); await load(); draw(); } } catch (e) { toast(e.message, true); } };
   return ov;
 }
-const validScope = () => { if (A.emp) scope = 'mine'; else if (scope === 'mine' && !A.me.staff_id) scope = 'all'; else if (!['mine', 'all'].includes(scope) && !staffOf(scope)) scope = A.owner ? 'all' : 'mine'; };
-const ids = () => scope === 'all' ? A.staff.map(s => s.id) : scope === 'mine' ? [meId()] : [scope];
+// orario del negozio in una data: null se chiuso (l'apertura straordinaria vince su tutto)
+function dayInfo(date) {
+  const op = (A.shop.openings || []).find(o => o.date === date);
+  if (op) return { open: op.open, close: op.close, extra: true };
+  if ((A.shop.closures || []).some(c => c.date === date)) return null;
+  const h = A.shop.hours[pd(date).getDay()];
+  return !h || h.closed ? null : { open: h.open, close: h.close };
+}
+const isTeam = v => String(v).startsWith('team:');
+const teamOf = b => A.staff.filter(s => s.id === b || s.boss_id === b).map(s => s.id);
+const singleScope = () => (scope !== 'all' && scope !== 'mine' && !isTeam(scope)) ? scope : (isTeam(scope) ? scope.slice(5) : meId());
+const validScope = () => { if (A.emp) scope = 'mine'; else if (scope === 'mine' && !A.me.staff_id) scope = 'all'; else if (isTeam(scope)) { if (!staffOf(scope.slice(5))) scope = A.owner ? 'all' : 'mine'; } else if (!['mine', 'all'].includes(scope) && !staffOf(scope)) scope = A.owner ? 'all' : 'mine'; };
+const ids = () => scope === 'all' ? A.staff.map(s => s.id) : scope === 'mine' ? [meId()] : isTeam(scope) ? teamOf(scope.slice(5)) : [scope];
 const inScope = a => ids().includes(a.staff_id);
-const scopeLabel = () => scope === 'all' ? (A.owner ? 'tutto il negozio' : 'il mio team') : sname(scope === 'mine' ? meId() : scope);
+const scopeLabel = () => scope === 'all' ? (A.owner ? 'tutto il negozio' : 'il mio team') : isTeam(scope) ? sname(scope.slice(5)) + ' e il suo staff' : sname(scope === 'mine' ? meId() : scope);
 function waUrl(phone, msg) {
   let n = String(phone || '').replace(/[^\d+]/g, '');
   if (!n) return null;
@@ -146,6 +157,7 @@ function shell(html) {
   validScope();
   const nav = A.emp ? NAV_EMP : NAV;
   const scopeSel = A.emp ? '' : `<label style="margin:0">Mostra:</label><select id="scope" onchange="setScope(this.value)">${A.me.staff_id ? `<option value="mine" ${scope === 'mine' ? 'selected' : ''}>I miei (${esc(mine?.name || '')})</option>` : ''}<option value="all" ${scope === 'all' ? 'selected' : ''}>${A.owner ? 'Tutto il negozio' : 'Il mio team'}</option>
+      ${A.owner ? A.staff.filter(s => s.is_owner).map(s => `<option value="team:${s.id}" ${scope === 'team:' + s.id ? 'selected' : ''}>${esc(s.name.split(' ')[0])} e il suo staff</option>`).join('') : ''}
       ${A.staff.filter(s => s.id !== A.me.staff_id).map(s => `<option value="${s.id}" ${scope === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>`;
   $('#app').innerHTML = `<div class="shell"><aside class="side" id="side"><div class="brand"><img src="/assets/img/logo-header.png" alt="${esc(A.shop.name)}"><small>${A.owner ? 'Pannello owner' : A.emp ? 'Area dipendenti' : 'Pannello admin'}</small></div>
     ${nav.map(n => n ? `<a href="${BASE}/${n[0] === 'index' ? '' : n[0]}" class="${PAGE === n[0] ? 'on' : ''}"><span>${n[1]}</span>${n[2]}</a>` : '<hr>').join('')}<hr><a href="/" target="_blank">🌐 Vedi il sito</a></aside>
@@ -243,7 +255,7 @@ function blockList(idl) {
   return l.length ? l.map(b => `<div class="item"><div><b>⛔ ${esc(sname(b.staff_id))}</b><br><span class="mu">${esc(blockTxt(b))}</span></div><button class="btn del sm" onclick="delBlock('${b.id}')">Elimina</button></div>`).join('') : '<div class="mu">Nessuna assenza o blocco in programma.</div>';
 }
 function blockModal(pre = {}) {
-  const cur = pre.staff_id || (scope !== 'all' && scope !== 'mine' ? scope : meId()), d0 = pre.date || (PAGE === 'appuntamenti' ? APP.date : today());
+  const cur = pre.staff_id || singleScope(), d0 = pre.date || (PAGE === 'appuntamenti' ? APP.date : today());
   modal('Blocca orari / assenza', `<p class="mu" style="margin:0 0 6px">I clienti non potranno prenotare con questa persona nei giorni e negli orari bloccati. Gli appuntamenti già presi restano.</p>
    <label>Persona</label><select id="b_st">${selOpts(A.staff, cur)}</select>
    <div class="row"><div><label>Dal giorno</label><input id="b_f" type="date" value="${d0}" onchange="if($('#b_t').value<this.value)$('#b_t').value=this.value"></div><div><label>Al giorno (incluso)</label><input id="b_t" type="date" value="${d0}"></div></div>
@@ -272,9 +284,9 @@ function delBlock(id) { if (confirm('Eliminare il blocco? Gli orari tornano pren
 /* agenda a colonne: operatori in alto, orari a sinistra, clic su uno spazio vuoto = nuovo appuntamento */
 const PPM = 1.5, COLS = ['#3b82f6', '#f59e0b', '#16a34a', '#8b5cf6', '#ef4444', '#C9366F', '#0ea5e9'];
 function gridRange(date) {
-  const h = A.shop.hours[pd(date).getDay()], step = Math.max(10, +A.shop.slot_step || 30);
-  const closed = !h || h.closed || (A.shop.closures || []).some(c => c.date === date);
-  let s = h && !h.closed ? toMin(h.open) : 8 * 60, e = h && !h.closed ? toMin(h.close) : 21 * 60;
+  const h = dayInfo(date), step = Math.max(10, +A.shop.slot_step || 30);
+  const closed = !h;
+  let s = h ? toMin(h.open) : 8 * 60, e = h ? toMin(h.close) : 21 * 60;
   A.appts.filter(a => a.date === date && a.status !== 'cancelled' && ids().includes(a.staff_id)).forEach(a => { s = Math.min(s, toMin(a.time)); e = Math.max(e, toMin(a.time) + (a.minutes || 30)); });
   s = Math.floor(s / step) * step; e = Math.ceil(e / step) * step;
   return { s, e, step, closed };
@@ -330,8 +342,8 @@ function slotsDraw() {
   const box = $('#f_slots'); if (!box) return;
   const st = $('#f_st').value, date = $('#f_d').value, mins = +$('#f_m').value || 30, cur = $('#f_t').value, me = box.dataset.id;
   if (!date) { box.innerHTML = '<div class="mu">Scegli la data</div>'; return; }
-  const h = A.shop.hours[pd(date).getDay()], step = Math.max(10, +A.shop.slot_step || 30);
-  const closed = !h || h.closed || (A.shop.closures || []).some(c => c.date === date);
+  const h = dayInfo(date), step = Math.max(10, +A.shop.slot_step || 30);
+  const closed = !h;
   const s = closed ? 8 * 60 : toMin(h.open), e = closed ? 21 * 60 : toMin(h.close);
   const busy = A.appts.filter(x => x.id !== me && x.staff_id === st && x.date === date && ['booked', 'done'].includes(x.status));
   const now = new Date(), isT = date === today(), nowMin = now.getHours() * 60 + now.getMinutes();
@@ -347,7 +359,7 @@ function slotsDraw() {
 function slotPick(t) { $('#f_t').value = t; slotsDraw(); }
 function apptModal(id, pre = {}) {
   const a = id ? A.appts.find(x => x.id === id) : null;
-  const staffId = a?.staff_id || pre.staff_id || (scope !== 'all' && scope !== 'mine' ? scope : meId());
+  const staffId = a?.staff_id || pre.staff_id || singleScope();
   const clientOpts = [...A.clients].sort((x, y) => x.name.localeCompare(y.name));
   const html = `<label>Cliente</label>
    <input id="f_cs" placeholder="🔍 Cerca cliente…" oninput="filterClients()">
@@ -369,8 +381,8 @@ function apptModal(id, pre = {}) {
     const fromSub = sv === 'sub';
     if (fromSub && !activeSub(cid) && !(a && a.from_sub)) throw new Error('Il cliente non ha un abbonamento attivo');
     const svc = A.services.find(x => x.id === sv);
-    const dh = A.shop.hours[pd(date).getDay()], dcl = (A.shop.closures || []).find(c => c.date === date);
-    if (dcl || !dh || dh.closed) throw new Error('Il negozio è chiuso in questa data' + (dcl && dcl.label ? ' (' + dcl.label + ')' : '') + ': scegli un altro giorno');
+    const dcl = (A.shop.closures || []).find(c => c.date === date);
+    if (!dayInfo(date)) throw new Error('Il negozio è chiuso in questa data' + (dcl && dcl.label ? ' (' + dcl.label + ')' : '') + ': scegli un altro giorno');
     const clash = A.appts.find(x => x.id !== id && x.staff_id === st && x.date === date && ['booked', 'done'].includes(x.status) && toMin(time) < toMin(x.time) + (x.minutes || 30) && toMin(time) + minutes > toMin(x.time));
     const blkHit = blocksFor(st, date).find(b => { const [f, e2] = blockRange(b); return toMin(time) < e2 && toMin(time) + minutes > f; });
     if (blkHit && !confirm(`${sname(st)} risulta non disponibile (${blockTxt(blkHit)}). Aggiungere comunque?`)) return false;
@@ -452,7 +464,7 @@ function clientDetail(c) {
   const s = activeSub(c.id), hist = A.appts.filter(a => a.client_id === c.id).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
   const subs = A.subs.filter(x => x.client_id === c.id), spent = hist.filter(a => a.status === 'done').reduce((t, a) => t + +a.price, 0) + subs.reduce((t, x) => t + +x.price, 0) + A.purchases.filter(p => p.client_id === c.id).reduce((t, p) => t + +p.price, 0);
   return clientForm(c) + `<div class="card"><h2>🎟️ Abbonamento</h2>
-   ${s ? `<b>${s.total - s.uses.length}</b> utilizzi rimasti su ${s.total} · acquistato il ${fdate(s.start_date)} <button class="btn sm" onclick="useSub('${s.id}')">Segna utilizzo</button>`
+   ${s ? `<b>${s.total - s.uses.length}</b> utilizzi rimasti su ${s.total} · acquistato il ${fdate(s.start_date)} · ${subExp(s)} <button class="btn sm" onclick="useSub('${s.id}')">Segna utilizzo</button> <button class="btn sec sm" onclick="editSub('${s.id}')">Modifica date</button>`
       : `<div class="mu" style="margin-bottom:8px">Nessun abbonamento attivo</div><button class="btn" onclick="sellSub('${c.id}')">Vendi abbonamento ${money(A.shop.subPrice)}</button>`}
    ${subs.length ? '<h3>Date di utilizzo</h3>' + subs.map(x => `<div class="mu">Acquisto ${fdate(x.start_date)} (${money(x.price)}): ${x.uses.length ? x.uses.map(fdate).join(', ') : 'nessun utilizzo'}</div>`).join('') : ''}</div>
   <div class="card"><h2>Storico <span class="mu">Speso in totale: ${money(spent)}</span></h2>${histBody(c, true)}
@@ -486,6 +498,24 @@ function sellSub(cid) {
   SB.q = ''; SB.cid = '';
   act(() => api('POST', '/api/admin/subscriptions', { client_id: cid, staff_id: meId(), start_date: today(), price: A.shop.subPrice, total: A.shop.subUses, uses: [] }));
 }
+const SUB_DAYS = 30;
+const subEnd = s => { const d = pd(s.start_date); d.setDate(d.getDate() + SUB_DAYS); return iso(d); };
+const subExp = s => subEnd(s) < today() ? '<span class="tag ko">scaduto il ' + fdate(subEnd(s)) + '</span>' : 'scade il ' + fdate(subEnd(s));
+// modifica la data di acquisto e le date di utilizzo di un abbonamento
+function editSub(id) {
+  const s = A.subs.find(x => x.id === id);
+  const row = d => `<div class="row" style="margin-bottom:4px"><input type="date" class="su_d" value="${d}"><button class="btn del sm" style="flex:0" onclick="this.parentElement.remove()">✕</button></div>`;
+  const ov = modal('Date abbonamento · ' + esc(cname(s.client_id)),
+    `<p class="mu">L'abbonamento è strettamente personale e dura ${SUB_DAYS} giorni dalla data di inizio.</p><label>Data di inizio</label><input id="su_s" type="date" value="${s.start_date}">
+     <label>Date di utilizzo</label><div id="su_l">${[...s.uses].sort().map(row).join('')}</div><button class="btn sec sm" id="su_add" type="button">+ Aggiungi utilizzo</button>`,
+    async () => {
+      const uses = [...document.querySelectorAll('.su_d')].map(i => i.value).filter(Boolean).sort(), start = $('#su_s').value;
+      if (!start) throw new Error('Scegli la data di inizio');
+      if (uses.length > s.total) throw new Error('Gli utilizzi non possono superare ' + s.total);
+      await api('PATCH', '/api/admin/subscriptions/' + id, { start_date: start, uses }); return true;
+    }, 'Salva');
+  ov.querySelector('#su_add').onclick = () => ov.querySelector('#su_l').insertAdjacentHTML('beforeend', row(today()));
+}
 function useSub(id) {
   const s = A.subs.find(x => x.id === id);
   modal('Segna utilizzo abbonamento', `<p>${esc(cname(s.client_id))} · rimasti ${s.total - s.uses.length} utilizzi</p><label>Data di utilizzo</label><input id="u_d" type="date" value="${today()}">`,
@@ -517,8 +547,8 @@ function pgAbbonamenti() {
    <div id="sres" style="margin-bottom:10px">${subRes()}</div>
    <button class="btn" id="sbtn" ${SB.cid ? '' : 'disabled'} onclick="sellSub(SB.cid)">Vendi a ${money(A.shop.subPrice)} · ${A.shop.subUses} utilizzi al mese</button></div>
    <div class="card"><h2>Abbonamenti</h2>${list.length ? list.map(s => { const act = s.uses.length < s.total; return `<div class="item"><div><b>${esc(cname(s.client_id))}</b> ${act ? '<span class="tag ok">attivo</span>' : '<span class="tag gr">esaurito</span>'}<br>
-    <span class="mu">Acquistato ${fdate(s.start_date)} · usati ${s.uses.length}/${s.total}${s.uses.length ? ' · ' + s.uses.map(fdate).join(', ') : ''}</span></div>
-    <div class="act">${act ? `<button class="btn sm" onclick="useSub('${s.id}')">Segna utilizzo</button>` : ''}<button class="btn del sm" onclick="delSub('${s.id}')">✕</button></div></div>`; }).join('') : '<div class="mu">Nessun abbonamento venduto</div>'}</div>`;
+    <span class="mu">Acquistato ${fdate(s.start_date)} · ${subExp(s)} · usati ${s.uses.length}/${s.total}${s.uses.length ? ' · ' + s.uses.map(fdate).join(', ') : ''}</span></div>
+    <div class="act">${act ? `<button class="btn sm" onclick="useSub('${s.id}')">Segna utilizzo</button>` : ''}<button class="btn sec sm" onclick="editSub('${s.id}')">Modifica date</button><button class="btn del sm" onclick="delSub('${s.id}')">✕</button></div></div>`; }).join('') : '<div class="mu">Nessun abbonamento venduto</div>'}</div>`;
 }
 function delSub(id) { if (confirm('Eliminare questo abbonamento? Verrà tolto anche dagli incassi.')) act(() => api('DELETE', '/api/admin/subscriptions/' + id)); }
 
@@ -773,15 +803,24 @@ function pgServizi() {
    ${Object.entries(CATS).map(([k, l]) => {
     const rows = list.filter(s => s.category === k);
     if (q && !rows.length) return '';
-    return `<h3>${l}</h3><div class="tw"><table><tr><th>Servizio</th><th style="width:100px">Prezzo (da)</th><th style="width:100px">Fino a</th><th style="width:90px">Minuti</th><th style="width:70px">Attivo</th><th style="width:50px"></th></tr>
-     ${rows.map(s => `<tr><td><input value="${esc(s.name)}" onchange="svPatch('${s.id}','name',this.value)"></td><td><input type="number" min="0" step="0.5" value="${s.price}" onchange="svPatch('${s.id}','price',this.value)"></td><td><input type="number" min="0" step="0.5" value="${+s.price_max > 0 ? s.price_max : ''}" placeholder="—" onchange="svPatch('${s.id}','price_max',this.value)"></td>
+    return `<h3>${l}</h3><div class="tw"><table><tr><th>Servizio</th><th style="width:100px">Prezzo (da)</th><th style="width:100px">Fino a</th><th style="width:90px">Minuti</th><th style="width:70px">Attivo</th><th style="width:50px"></th><th style="width:76px"></th></tr>
+     ${rows.map((s, i) => `<tr><td><input value="${esc(s.name)}" onchange="svPatch('${s.id}','name',this.value)"></td><td><input type="number" min="0" step="0.5" value="${s.price}" onchange="svPatch('${s.id}','price',this.value)"></td><td><input type="number" min="0" step="0.5" value="${+s.price_max > 0 ? s.price_max : ''}" placeholder="—" onchange="svPatch('${s.id}','price_max',this.value)"></td>
       <td><input type="number" min="10" step="5" value="${s.minutes}" onchange="svPatch('${s.id}','minutes',this.value)"></td><td><input type="checkbox" ${s.active ? 'checked' : ''} onchange="svPatch('${s.id}','active',this.checked)"></td>
-      <td><button class="btn del sm" onclick="svDel('${s.id}')">✕</button></td></tr>`).join('') || '<tr><td colspan="6" class="mu">Nessun servizio</td></tr>'}</table></div>
+      <td><button class="btn del sm" onclick="svDel('${s.id}')">✕</button></td><td style="white-space:nowrap"><button class="btn sec sm" ${i === 0 ? 'disabled' : ''} onclick="svMove('${s.id}',-1)" aria-label="Sposta su">↑</button> <button class="btn sec sm" ${i === rows.length - 1 ? 'disabled' : ''} onclick="svMove('${s.id}',1)" aria-label="Sposta giù">↓</button></td></tr>`).join('') || '<tr><td colspan="7" class="mu">Nessun servizio</td></tr>'}</table></div>
      <div class="row" style="margin-top:8px"><input id="sn_${k}" placeholder="Nuovo servizio"><input id="sp_${k}" type="number" min="0" step="0.5" placeholder="Prezzo (da)"><input id="sx_${k}" type="number" min="0" step="0.5" placeholder="Fino a (facolt.)"><input id="sm_${k}" type="number" min="10" step="5" placeholder="Minuti (30)"><button class="btn sec" onclick="svAdd('${k}')">Aggiungi a ${l}</button></div>`;
   }).join('')}</div>
   <div class="card"><h2>Copia listino</h2><div class="row"><select id="cp">${selOpts(A.staff.filter(s => s.id !== st.id), '')}</select><button class="btn sec" onclick="svCopy()">Copia qui i servizi mancanti</button></div></div>`;
 }
 const svPatch = (id, f, v) => act(() => api('PATCH', '/api/admin/services/' + id, { [f]: v }));
+// sposta un servizio su/giù nella sua categoria e salva l'ordine
+function svMove(id, dir) {
+  const s = A.services.find(x => x.id === id), mine = A.services.filter(x => x.staff_id === s.staff_id);
+  const cat = mine.filter(x => x.category === s.category), i = cat.findIndex(x => x.id === id), j = i + dir;
+  if (j < 0 || j >= cat.length) return;
+  [cat[i], cat[j]] = [cat[j], cat[i]];
+  const ids = Object.keys(CATS).flatMap(k => k === s.category ? cat : mine.filter(x => x.category === k)).map(x => x.id);
+  act(() => api('POST', '/api/admin/services-order', { staff_id: s.staff_id, ids }));
+}
 const svDel = id => { if (confirm('Eliminare il servizio?')) act(() => api('DELETE', '/api/admin/services/' + id)); };
 function svAdd(k) {
   const name = $('#sn_' + k).value.trim(); if (!name) return toast('Inserisci il nome', true);
@@ -881,7 +920,10 @@ function pgImpostazioni() {
     <span><input type="time" id="h_o${i}" value="${h.open}" style="width:120px;display:inline"> – <input type="time" id="h_f${i}" value="${h.close}" style="width:120px;display:inline"></span></div>`; }).join('')}
    <h3>Giorni di chiusura (ferie, festivi)</h3><div id="clos">${(s.closures || []).map((c, i) => `<div class="row" style="margin-bottom:4px"><input type="date" class="cl_d" value="${c.date}"><input class="cl_l" value="${esc(c.label)}" placeholder="Motivo"><button class="btn del sm" style="flex:0" onclick="this.parentElement.remove()">✕</button></div>`).join('')}</div>
    <button class="btn sec sm" onclick="addClosure()">+ Aggiungi giorno di chiusura</button>
-   <h3>Prenotazioni e abbonamenti</h3><div class="row"><div><label>Intervallo orari (minuti)</label><input id="s_slot" type="number" min="10" step="5" value="${s.slot_step}"></div>
+   <h3>Aperture straordinarie</h3><p class="mu" style="margin:0 0 8px">Giorni in cui il negozio è aperto anche se normalmente chiuso (es. una domenica): diventano prenotabili con l'orario indicato.</p>
+   <div id="opens">${(s.openings || []).map(o => openingRow(o)).join('')}</div>
+   <button class="btn sec sm" onclick="addOpening()">+ Aggiungi apertura straordinaria</button>
+   <h3>Prenotazioni e abbonamenti</h3><p class="mu" style="margin:0 0 8px">L'abbonamento è strettamente personale e dura ${SUB_DAYS} giorni dalla data di inizio (la cliente lo vede nella sua area personale).</p><div class="row"><div><label>Intervallo orari (minuti)</label><input id="s_slot" type="number" min="10" step="5" value="${s.slot_step}"></div>
     <div><label>Prezzo abbonamento</label><input id="s_sp" type="number" min="0" value="${s.subPrice}"></div><div><label>Utilizzi inclusi</label><input id="s_su" type="number" min="1" value="${s.subUses}"></div></div>
    <h3>Messaggi</h3><div class="row"><div><label>Ora invio email promemoria</label><input id="s_rh" type="number" min="0" max="23" value="${s.reminder_hour}"></div></div>
    <label>Testo WhatsApp promemoria <span class="mu">({nome} {data} {ora} {servizio} {negozio})</span></label><textarea id="s_wa" rows="3">${esc(s.wa_template)}</textarea>
@@ -907,11 +949,16 @@ function addClosure() {
   d.innerHTML = `<input type="date" class="cl_d"><input class="cl_l" placeholder="Motivo"><button class="btn del sm" style="flex:0" onclick="this.parentElement.remove()">✕</button>`;
   $('#clos').append(d);
 }
+function openingRow(o = {}) {
+  return `<div class="row" style="margin-bottom:4px"><input type="date" class="op_d" value="${o.date || ''}"><input type="time" class="op_o" value="${o.open || '09:00'}"><input type="time" class="op_f" value="${o.close || '19:30'}"><input class="op_l" value="${esc(o.label || '')}" placeholder="Motivo (facoltativo)"><button class="btn del sm" style="flex:0" onclick="this.parentElement.remove()">✕</button></div>`;
+}
+function addOpening() { $('#opens').insertAdjacentHTML('beforeend', openingRow()); }
 function saveShop() {
-  const b = { hours: [], closures: [] };
+  const b = { hours: [], closures: [], openings: [] };
   for (const k of ['name', 'tagline', 'city', 'address', 'phone', 'whatsapp', 'email', 'currency', 'maps', 'instagram', 'facebook']) b[k] = $('#s_' + k).value;
   for (let i = 0; i < 7; i++) b.hours.push({ closed: $('#h_c' + i).checked, open: $('#h_o' + i).value, close: $('#h_f' + i).value });
   document.querySelectorAll('#clos .row').forEach(r => { const d = r.querySelector('.cl_d').value; if (d) b.closures.push({ date: d, label: r.querySelector('.cl_l').value }); });
+  document.querySelectorAll('#opens .row').forEach(r => { const d = r.querySelector('.op_d').value; if (d) b.openings.push({ date: d, open: r.querySelector('.op_o').value, close: r.querySelector('.op_f').value, label: r.querySelector('.op_l').value }); });
   Object.assign(b, { slot_step: $('#s_slot').value, subPrice: $('#s_sp').value, subUses: $('#s_su').value, reminder_hour: $('#s_rh').value, wa_template: $('#s_wa').value, bd_template: $('#s_bd').value });
   act(async () => { await api('PUT', '/api/admin/shop', b); toast('Impostazioni salvate'); });
 }

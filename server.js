@@ -42,7 +42,7 @@ const SEED_SHOP = {
   address: 'Via Messina 441, 95126 Catania (CT)', phone: '+39 095 094 0857', whatsapp: '', email: '',
   instagram: 'https://www.instagram.com/vogliadiparrucchieri_enrico_/', facebook: '', maps: 'https://maps.app.goo.gl/k7CNoWfwgGCtBmof7',
   hours: [day(), day(), day('09:00', '19:30'), day('09:00', '19:30'), day('09:00', '19:30'), day('09:00', '20:00'), day('09:00', '20:00')],
-  closures: [], slot_step: 30, subPrice: 32, subUses: 4, reminder_hour: 10,
+  closures: [], openings: [], slot_step: 30, subPrice: 32, subUses: 4, reminder_hour: 10,
   wa_template: 'Ciao {nome}, ti ricordo il tuo appuntamento di domani {data} alle {ora} ({servizio}) da {negozio}. A domani!',
   bd_template: 'Ciao {nome}, tanti auguri di buon compleanno! 🎂 Il team di {negozio}',
 };
@@ -211,6 +211,12 @@ function pick(table, data) {
 }
 
 /* ---------- assenze / orari bloccati (per operatore, da giorno a giorno, anche solo da un'ora a un'altra) ---------- */
+/* ---------- ordine dei servizi (salvato nelle impostazioni, nessuna colonna in più) ---------- */
+const svcOrder = store => (store.get('settings', 'svorder')?.value.list) || [];
+function sortSvc(store, list) {
+  const pos = new Map(svcOrder(store).map((id, i) => [id, i]));
+  return [...list].sort((a, b) => (pos.has(a.id) ? pos.get(a.id) : 1e9) - (pos.has(b.id) ? pos.get(b.id) : 1e9));
+}
 const blocksOf = store => (store.get('settings', 'blocks')?.value.list) || [];
 async function saveBlocks(store, list) {
   if (store.get('settings', 'blocks')) await store.update('settings', 'blocks', { value: { list } });
@@ -223,13 +229,19 @@ function blockedRanges(store, staffId, date) {
 }
 
 /* ---------- disponibilità ---------- */
+// orario del negozio in una data: null se chiuso. Un'apertura straordinaria vince su chiusura settimanale e giorni di chiusura.
+function dayHours(shop, date) {
+  const op = (shop.openings || []).find(o => o.date === date);
+  if (op) return { open: op.open, close: op.close, extra: true };
+  if ((shop.closures || []).some(c => c.date === date)) return null;
+  const h = shop.hours[new Date(date + 'T12:00:00').getDay()];
+  return !h || h.closed ? null : { open: h.open, close: h.close };
+}
 // tutti gli orari del giorno per un operatore, con stato (ok = prenotabile)
 function allSlots(store, staffId, date, minutes) {
   const shop = store.get('settings', 'shop').value;
-  const closure = (shop.closures || []).find(c => c.date === date);
-  if (closure) return [];
-  const h = shop.hours[new Date(date + 'T12:00:00').getDay()];
-  if (!h || h.closed) return [];
+  const h = dayHours(shop, date);
+  if (!h) return [];
   const busy = store.rows('appointments')
     .filter(a => a.staff_id === staffId && a.date === date && (a.status === 'booked' || a.status === 'done'))
     .map(a => [toMin(a.time), toMin(a.time) + (a.minutes || 30)]);
@@ -277,7 +289,7 @@ function bootstrapFor(store, admin, shop, env) {
     .map(s => ({ ...s, account: (store.rows('admins').find(a => a.staff_id === s.id && roleOf(a) === 'dipendente') || {}).username || '' }));
   const base = {
     me: { username: admin.username, staff_id: admin.staff_id, role: r },
-    staff, services: store.rows('services').filter(v => ids.includes(v.staff_id)),
+    staff, services: sortSvc(store, store.rows('services').filter(v => ids.includes(v.staff_id))),
     appointments: store.rows('appointments').filter(a => ids.includes(a.staff_id)),
     blocks: blocksOf(store).filter(b => ids.includes(b.staff_id)),
   };
@@ -298,6 +310,15 @@ function bootstrapFor(store, admin, shop, env) {
     gallery: [...store.rows('gallery')].sort((a, b) => a.sort - b.sort),
     status: { supabase: store.isSupabase, storage: store.adapter, resend: !!env.RESEND_API_KEY, from: env.RESEND_FROM || '' },
   };
+}
+// niente appuntamenti nei giorni di chiusura (giorni rossi del calendario)
+function assertOpen(store, date) {
+  if (!validDate(date)) return;
+  const shop = store.get('settings', 'shop').value;
+  if (!dayHours(shop, date)) {
+    const cl = (shop.closures || []).find(c => c.date === date);
+    throw fail(400, 'Il negozio è chiuso in questa data' + (cl && cl.label ? ' (' + cl.label + ')' : '') + ': scegli un altro giorno');
+  }
 }
 // controlla che l'utente possa scrivere su quella riga
 function authorize(store, admin, table, method, id, row) {
@@ -352,7 +373,7 @@ async function api(store, req, res, url) {
     return json(res, 200, {
       shop: pub,
       staff: staff.map(({ id, name, role, bio, photo, is_owner }) => ({ id, name, role, bio, photo, is_owner })),
-      services: store.rows('services').filter(s => s.active && staff.some(t => t.id === s.staff_id))
+      services: sortSvc(store, store.rows('services').filter(s => s.active && staff.some(t => t.id === s.staff_id)))
         .sort((a, b) => { const x = staff.findIndex(t => t.id === a.staff_id), y = staff.findIndex(t => t.id === b.staff_id); return ((staff[x].is_owner ? 0 : 1) - (staff[y].is_owner ? 0 : 1)) || x - y; })
         .map(({ id, staff_id, category, name, price, price_max, minutes }) => ({ id, staff_id, category, name, price, price_max: +price_max > +price ? +price_max : 0, minutes })),
       gallery: [...store.rows('gallery')].sort((a, b) => a.sort - b.sort || (a.created_at || '').localeCompare(b.created_at || '')).map(({ id, url, caption }) => ({ id, url, caption })),
@@ -536,6 +557,7 @@ async function api(store, req, res, url) {
     if (Array.isArray(b.hours) && b.hours.length === 7)
       v.hours = b.hours.map(h => ({ closed: !!h.closed, open: validTime(h.open) ? h.open : '09:00', close: validTime(h.close) ? h.close : '19:30' }));
     if (Array.isArray(b.closures)) v.closures = b.closures.filter(c => validDate(c.date)).slice(0, 200).map(c => ({ date: c.date, label: clean(c.label, 60) }));
+    if (Array.isArray(b.openings)) v.openings = b.openings.filter(o => validDate(o.date) && validTime(o.open) && validTime(o.close) && toMin(o.close) > toMin(o.open)).slice(0, 200).map(o => ({ date: o.date, open: o.open, close: o.close, label: clean(o.label, 60) }));
     await store.update('settings', 'shop', { value: v });
     return json(res, 200, { ok: true });
   }
@@ -591,6 +613,20 @@ async function api(store, req, res, url) {
     return json(res, 200, { ok: true });
   }
 
+  // riordino dei servizi di un operatore
+  if (route === 'POST /api/admin/services-order') {
+    const b = await readBody(req);
+    if (role === 'dipendente' || !teamIds(store, admin).includes(b.staff_id) || !Array.isArray(b.ids)) throw forbid();
+    const own = new Set(store.rows('services').filter(v => v.staff_id === b.staff_id).map(v => v.id));
+    const ids = b.ids.filter(i => own.has(i));
+    return store.lock(async () => {
+      const list = [...svcOrder(store).filter(i => !own.has(i) || !ids.includes(i)).filter(i => !own.has(i)), ...ids];
+      if (store.get('settings', 'svorder')) await store.update('settings', 'svorder', { value: { list } });
+      else await store.insert('settings', { id: 'svorder', value: { list } });
+      return json(res, 200, { ok: true });
+    });
+  }
+
   // assenze / orari bloccati (titolari e owner)
   if (route === 'POST /api/admin/blocks') {
     const b = await readBody(req);
@@ -622,6 +658,7 @@ async function api(store, req, res, url) {
       if ((table === 'subscriptions' || table === 'purchases') && role !== 'owner' && row.staff_id === undefined) row.staff_id = admin.staff_id;
       for (const k of REQUIRED[table]) if (row[k] === undefined || row[k] === '') throw fail(400, 'Campo mancante: ' + k);
       authorize(store, admin, table, 'POST', null, row);
+      if (table === 'appointments' && row.status !== 'cancelled') assertOpen(store, row.date);
       const defaults = {
         staff: { role: '', bio: '', photo: '', active: true, is_owner: false, boss_id: '', sort: store.rows('staff').length + 1 },
         services: { price: 0, minutes: 30, active: true },
@@ -643,6 +680,7 @@ async function api(store, req, res, url) {
       if (!store.get(table, id)) throw fail(404, 'Non trovato');
       if (table === 'services' && patch.price_max === 0 && !store.get(table, id).price_max) delete patch.price_max;
       if (table === 'staff' && role !== 'owner') delete patch.boss_id;
+      if (table === 'appointments' && patch.date && patch.date !== store.get(table, id).date && (patch.status || store.get(table, id).status) !== 'cancelled') assertOpen(store, patch.date);
       if (role === 'dipendente') {
         delete patch.price; delete patch.from_sub;
         if (patch.staff_id !== undefined) patch.staff_id = admin.staff_id;
